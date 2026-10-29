@@ -1,0 +1,18 @@
+{
+  "id": "U01",
+  "submitted": "2026-10-29T20:30:00+01:00",
+  "applicant": {
+    "name": "Dr. Anna Weber",
+    "organisation": "Danube Institute for Public Health (university research group)",
+    "country": "AT"
+  },
+  "requested_as": "health data request",
+  "requested_format": "anonymised statistics",
+  "purpose": "We conduct public health research on regional pneumonia admissions to plan hospital capacity with the regional health authorities.",
+  "question": "How many inpatient stays started in 2025 with a main diagnosis whose ICD-10 code starts with J18, in each patient region?",
+  "definitions": [
+    "Inpatient stay = encounter with type 'inpatient'.",
+    "Count stays (not patients) whose start_date is in 2025 and whose main diagnosis (primary_icd10) starts with J18.",
+    "Report per region: inpatient stays."
+  ]
+}
