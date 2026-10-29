@@ -1,0 +1,19 @@
+{
+  "id": "J21",
+  "submitted": "2026-10-29T21:00:00+01:00",
+  "applicant": {
+    "name": "Dr. Jury Researcher 21",
+    "organisation": "Austrian Health Research Consortium",
+    "country": "AT"
+  },
+  "requested_as": "health data access application",
+  "requested_format": "pseudonymised records",
+  "purpose": "Clinical research on within-person asthma trajectories. Statistics are not enough because we must link repeated measurements within each person over time.",
+  "question": "Provide pseudonymised conditions and BMI values for adults with asthma who have at least one BMI value.",
+  "definitions": [
+    "Adult = aged 18 or older on 31 December 2025.",
+    "Asthma = any condition with an ICD-10 code starting with J45.",
+    "Cohort = adults with asthma who have at least one BMI value (LOINC 39156-5).",
+    "Report the size of the cohort you would make available."
+  ]
+}

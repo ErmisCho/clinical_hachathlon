@@ -21,7 +21,9 @@ const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
  *  Pure-digit tokens are merged into the preceding token (e.g. "type 2" → "type2").
  */
 function toLabel(text: string): string {
-  const tokens = text.toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length > 0);
+  const tokens = text.toLowerCase().split(/[^a-z0-9]+/).filter((t) =>
+    t.length > 0
+  );
   const merged: string[] = [];
   for (const token of tokens) {
     if (/^\d+$/.test(token) && merged.length > 0) {
@@ -109,7 +111,7 @@ const prefixList = "([A-Z][A-Z0-9.]*(?: or [A-Z][A-Z0-9.]*)*)";
 // Shared, non-capturing grammar fragments keep synonymous prefix predicates
 // consistent across diagnosis, condition and medication rules.
 const prefixVerb =
-  "(?:starting with|starts? with|beginning with|that starts? with)";
+  "(?:starting with|starts? with|beginning with|begins? with|that starts? with)";
 const primaryDiagnosis =
   `(?:the )?(?:(?:main|primary) diagnos(?:is|es)(?: \\(primary_icd10\\))?|primary_icd10) ${prefixVerb} ([A-Z][A-Z0-9.]*)`;
 const holderGroup =
@@ -432,6 +434,9 @@ export function parseRequest(request: unknown): ParseResult {
       return encounter?.encounter_type === "inpatient";
     }
     if (/^(?:stays?|encounters?)$/.test(t)) return encounter !== undefined;
+    // Encounter predicates currently select an encounter counting unit. Never
+    // interpret a patient count as a stay count merely because both use visits.
+    if (encounter) return false;
     return /^(?:all )?(?:adults?|patients?|women|men|concept\d+)(?: with (?:an? )?(?:active )?concept\d+)?(?: who have (?:an? |at least one )?obs\d+ value| with a obs\d+)?$/
       .test(t);
   };
@@ -626,7 +631,12 @@ export function parseRequest(request: unknown): ParseResult {
       }
     } else {
       if (!countPhrase(body)) {
-        fail(report.original, "Unsupported report count or metric");
+        fail(
+          report.original,
+          encounter && /\b(?:patients?|adults?)\b/i.test(body)
+            ? "Patient counts with encounter filters require review: counting stays would give a different number"
+            : "Unsupported report count or metric",
+        );
       }
       for (const medication of meds) {
         if (
@@ -639,7 +649,12 @@ export function parseRequest(request: unknown): ParseResult {
         } else cohort.push(medication.filter);
       }
       // Derive the single count label from the report body phrase
-      metrics[0].label = deriveCohortLabel(body, concepts, observations, tokenize);
+      metrics[0].label = deriveCohortLabel(
+        body,
+        concepts,
+        observations,
+        tokenize,
+      );
     }
   } else if (records) {
     const recordTypes: RecordType[] = [];

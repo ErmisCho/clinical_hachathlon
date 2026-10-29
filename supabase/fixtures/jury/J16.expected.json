@@ -1,0 +1,31 @@
+{
+  "decision": "APPROVE_STATISTICAL",
+  "articles": [
+    "53",
+    "69"
+  ],
+  "rationale": "Health research is allowed. Supply anonymous statistics; no necessity for record access is established.",
+  "parse": "supported",
+  "plan": {
+    "cohort_filters": [
+      {
+        "type": "encounter_filter",
+        "encounter_type": "inpatient",
+        "start_year": 2023,
+        "primary_icd10_prefix": "N39"
+      }
+    ],
+    "count_unit": "encounter",
+    "metrics": [
+      {
+        "type": "count",
+        "label": "inpatient_stays"
+      }
+    ],
+    "dimensions": [
+      {
+        "by": "region"
+      }
+    ]
+  }
+}

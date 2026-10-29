@@ -1,0 +1,17 @@
+{
+  "id": "J25",
+  "submitted": "2026-10-29T21:00:00+01:00",
+  "applicant": {
+    "name": "Dr. Jury Researcher 25",
+    "organisation": "Austrian Health Research Consortium",
+    "country": "AT"
+  },
+  "requested_as": "health data request",
+  "requested_format": "anonymised statistics",
+  "purpose": "Clinical research for an insurer: build an underwriting score to decide who may buy a policy.",
+  "question": "Count asthma patients by hospital.",
+  "definitions": [
+    "Asthma = any condition with an ICD-10 code starting with J45.",
+    "Report per hospital: patients with asthma."
+  ]
+}

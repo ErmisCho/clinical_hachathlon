@@ -1,0 +1,9 @@
+{
+  "decision": "APPROVE_STATISTICAL",
+  "articles": [
+    "53",
+    "69"
+  ],
+  "rationale": "Allowed statistics, but conflicting patient and stay counting units require review rather than silently counting stays.",
+  "parse": "review"
+}

@@ -1,0 +1,52 @@
+{
+  "decision": "APPROVE_SPE",
+  "articles": [
+    "53",
+    "66",
+    "68",
+    "73"
+  ],
+  "rationale": "Health research is allowed. Linked histories are necessary for the stated longitudinal analysis; use an SPE.",
+  "parse": "supported",
+  "spe": {
+    "tables": [
+      "conditions",
+      "observations"
+    ],
+    "loincs": [
+      "39156-5"
+    ]
+  },
+  "plan": {
+    "cohort_filters": [
+      {
+        "type": "age",
+        "min_age": 18
+      },
+      {
+        "type": "has_condition",
+        "icd10_prefixes": [
+          "J45"
+        ]
+      },
+      {
+        "type": "has_observation",
+        "loinc": "39156-5"
+      }
+    ],
+    "count_unit": "patient",
+    "metrics": [
+      {
+        "type": "count",
+        "label": "cohort_size"
+      }
+    ],
+    "spe_record_types": [
+      "conditions",
+      "observations"
+    ],
+    "spe_observation_loincs": [
+      "39156-5"
+    ]
+  }
+}

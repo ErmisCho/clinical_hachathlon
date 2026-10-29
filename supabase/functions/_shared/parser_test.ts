@@ -577,7 +577,13 @@ Deno.test("plan equivalence preserves SPE scope and future fields", () => {
  *  exactly for R01–R10 — these are the readable labels that applicants and the
  *  jury see in the API answer.
  */
-const LABEL_FIXTURES: Array<{ request: (typeof REQUEST_FIXTURES)[number]; example: { metrics: Array<{ label: string }> }; id: string }> = [
+const LABEL_FIXTURES: Array<
+  {
+    request: (typeof REQUEST_FIXTURES)[number];
+    example: { metrics: Array<{ label: string }> };
+    id: string;
+  }
+> = [
   { request: REQUEST_FIXTURES[0], example: R01, id: "R01" },
   { request: REQUEST_FIXTURES[1], example: R02, id: "R02" },
   { request: REQUEST_FIXTURES[2], example: R03, id: "R03" },
@@ -598,7 +604,9 @@ for (const { request, example, id } of LABEL_FIXTURES) {
     const expectedLabels = example.metrics.map((m) => m.label);
     assert(
       JSON.stringify(parsedLabels) === JSON.stringify(expectedLabels),
-      `Label mismatch for ${id}: got ${JSON.stringify(parsedLabels)}, want ${JSON.stringify(expectedLabels)}`,
+      `Label mismatch for ${id}: got ${JSON.stringify(parsedLabels)}, want ${
+        JSON.stringify(expectedLabels)
+      }`,
     );
   });
 }
@@ -617,7 +625,12 @@ const GENERIC_LABELS = new Set([
   "medication_2",
 ]);
 
-for (const { request, id } of [{ request: U01, id: "U01" }, { request: U02, id: "U02" }]) {
+for (
+  const { request, id } of [{ request: U01, id: "U01" }, {
+    request: U02,
+    id: "U02",
+  }]
+) {
   Deno.test(`${id}: metric labels are readable, not generic`, () => {
     const result = parseRequest(request);
     assert(result.ok, `Parse failed: ${JSON.stringify(result)}`);
@@ -633,3 +646,57 @@ for (const { request, id } of [{ request: U01, id: "U01" }, { request: U02, id: 
     }
   });
 }
+
+Deno.test("encounter predicates cannot silently turn distinct patients into stay counts", () => {
+  const result = parseRequest({
+    id: "patient-visit-count",
+    question: "Count distinct patients by hospital",
+    definitions: [
+      "Inpatient stay = encounter with type 'inpatient'.",
+      "Count stays whose start_date is in 2025 and whose main diagnosis begins with S72.",
+      "Report per hospital: patients.",
+    ],
+  });
+  assert(
+    !result.ok && result.errors.some((e) => e.reason.length > 0),
+    "Ambiguous patient/stay counting must be flagged",
+  );
+});
+
+Deno.test("prefix synonyms preserve code and full-clause consumption", () => {
+  for (
+    const verb of [
+      "begins with",
+      "begin with",
+      "beginning with",
+      "that starts with",
+    ]
+  ) {
+    const request = {
+      id: "prefix-synonym",
+      question: "Count asthma by region",
+      definitions: [
+        `Asthma = any condition with an ICD-10 code ${verb} J45.`,
+        "Report per region: patients with asthma.",
+      ],
+    };
+    const result = parseRequest(request);
+    assert(result.ok, JSON.stringify(result));
+    assert(
+      JSON.stringify(result.plan.cohort_filters) ===
+        JSON.stringify([{ type: "has_condition", icd10_prefixes: ["J45"] }]),
+      "Code prefix lost",
+    );
+    const modified = {
+      ...request,
+      definitions: [
+        request.definitions[0].replace("J45.", "J45 and onset_date in 2025."),
+        request.definitions[1],
+      ],
+    };
+    assert(
+      !parseRequest(modified).ok,
+      "Unsupported suffix must never be silently ignored",
+    );
+  }
+});

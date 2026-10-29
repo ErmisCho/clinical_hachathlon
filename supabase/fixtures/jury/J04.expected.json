@@ -1,0 +1,35 @@
+{
+  "decision": "APPROVE_STATISTICAL",
+  "articles": [
+    "53",
+    "69"
+  ],
+  "rationale": "Health research is allowed. Supply anonymous statistics; no necessity for record access is established.",
+  "parse": "supported",
+  "plan": {
+    "cohort_filters": [
+      {
+        "type": "age",
+        "min_age": 18
+      },
+      {
+        "type": "has_condition",
+        "icd10_prefixes": [
+          "I50"
+        ]
+      }
+    ],
+    "count_unit": "patient",
+    "metrics": [
+      {
+        "type": "count",
+        "label": "adults_with_heart_failure"
+      }
+    ],
+    "dimensions": [
+      {
+        "by": "data_holder"
+      }
+    ]
+  }
+}

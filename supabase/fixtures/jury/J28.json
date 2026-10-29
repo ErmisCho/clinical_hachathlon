@@ -1,0 +1,17 @@
+{
+  "id": "J28",
+  "submitted": "2026-10-29T21:00:00+01:00",
+  "applicant": {
+    "name": "Dr. Jury Researcher 28",
+    "organisation": "Austrian Health Research Consortium",
+    "country": "AT"
+  },
+  "requested_as": "health data access application",
+  "requested_format": "pseudonymised records",
+  "purpose": "Clinical prediction for staffing: screen workers for promotion eligibility using their depression history.",
+  "question": "Count asthma patients by hospital.",
+  "definitions": [
+    "Asthma = any condition with an ICD-10 code starting with J45.",
+    "Report per hospital: patients with asthma."
+  ]
+}

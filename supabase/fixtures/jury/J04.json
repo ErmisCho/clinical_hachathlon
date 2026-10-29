@@ -1,0 +1,18 @@
+{
+  "id": "J04",
+  "submitted": "2026-10-29T21:00:00+01:00",
+  "applicant": {
+    "name": "Dr. Jury Researcher 4",
+    "organisation": "Austrian Health Research Consortium",
+    "country": "AT"
+  },
+  "requested_as": "health data request",
+  "requested_format": "anonymised statistics",
+  "purpose": "Clinical research to improve public health planning.",
+  "question": "Count adults with heart failure by hospital (data_holder) for service planning.",
+  "definitions": [
+    "Adult = aged 18 or older on 31 December 2025.",
+    "Heart failure = any condition with an ICD-10 code starts with I50.",
+    "Report per hospital (data_holder): adults with heart failure."
+  ]
+}

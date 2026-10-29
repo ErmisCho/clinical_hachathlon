@@ -42,6 +42,8 @@ const PROHIBITED_RULES: Array<{ label: string; patterns: RegExp[] }> = [
       /premium.*risk/i,
       /exclud.*insurance/i,
       /insurance.*contract/i,
+      /\bunderwriting\b/i,
+      /\binsurance\b.*\b(?:risk scor|coverage|eligibility)/i,
     ],
   },
   {
@@ -51,6 +53,9 @@ const PROHIBITED_RULES: Array<{ label: string; patterns: RegExp[] }> = [
       /\bmarketing\b/i,
       /physician advertising/i,
       /advertising campaign/i,
+      /\bsales\s+leads?\b/i,
+      /\bpromotional\s+outreach\b/i,
+      /\btarget\b.*\bcommercial\s+offers?\b/i,
     ],
   },
   {
@@ -61,6 +66,8 @@ const PROHIBITED_RULES: Array<{ label: string; patterns: RegExp[] }> = [
       /employee.*list/i,
       /renew.*contract/i,
       /sick\s+leave/i,
+      /\bjob\s+applicants?\b.*\b(?:rank|screen|hiring)\b/i,
+      /\b(?:rank|screen)\b.*\b(?:workers?|staff|job\s+applicants?)\b/i,
     ],
   },
   {
@@ -71,6 +78,20 @@ const PROHIBITED_RULES: Array<{ label: string; patterns: RegExp[] }> = [
       /\bcigarette/i,
       /nicotine\s+pouch/i,
       /healthier\s+alternative/i,
+    ],
+  },
+  {
+    label: "development of alcoholic products",
+    patterns: [
+      /\b(?:develop|optimise|optimize|tailor)\w*\b.*\balcohol(?:ic)?\s+(?:products?|beverages?|drinks?)\b/i,
+    ],
+  },
+  {
+    label: "re-identification of data subjects",
+    patterns: [
+      /\bre[- ]?identif(?:y|ication)\b/i,
+      /\brecover\b.*\bidentities\b/i,
+      /\blink\b.*\bpseudonyms?\b.*\b(?:names|addresses)\b/i,
     ],
   },
   {
@@ -113,18 +134,16 @@ const ALLOWED_PATTERNS: RegExp[] = [
 const SPE_JUSTIFICATION_PATTERNS: RegExp[] = [
   /aggregates?\s+are\s+not\s+enough/i,
   /statistics?\s+are\s+not\s+enough/i,
-  /individual[- ]level/i,
-  /patient[- ]level\s+(data|histor)/i,
-  /row[- ]level/i,
-  /needs?\s+individual/i,
-  /needs?\s+patient[- ]level/i,
+  // Asking for records is not itself an explanation of why statistics fail.
+  /(?:aggregates?|statistics?)\s+(?:are|is)\s+insufficient\s+because\b/i,
 ];
 
 // ---------------------------------------------------------------------------
 // Main decision function
 // ---------------------------------------------------------------------------
 export function decide(req: HealthDataRequest): DecisionResult {
-  const text = `${req.purpose ?? ""} ${req.question ?? ""}`;
+  const text = `${req.purpose ?? ""} ${req.question ?? ""}`
+    .normalize("NFKC").replace(/[\u2010-\u2015]/g, "-").replace(/\s+/g, " ");
 
   // Step 1 – check prohibited purposes (Art. 54)
   const prohibitedMatched: string[] = [];

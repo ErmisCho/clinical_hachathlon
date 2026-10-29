@@ -43,12 +43,19 @@ for (const id of Object.keys(REQUESTS)) {
 Deno.test("insurance premium purpose is rejected even as health data request", () => {
   const req: HealthDataRequest = {
     requested_as: "health data request",
-    purpose: "We want to align private health insurance premiums for diabetes patients with their risk.",
+    purpose:
+      "We want to align private health insurance premiums for diabetes patients with their risk.",
     question: "What is the average HbA1c by age band?",
   };
   const result = decide(req);
-  assert(result.decision === "REJECT", `Expected REJECT, got ${result.decision}`);
-  assert(result.articles.includes("54"), "Expected article 54 for prohibited purpose");
+  assert(
+    result.decision === "REJECT",
+    `Expected REJECT, got ${result.decision}`,
+  );
+  assert(
+    result.articles.includes("54"),
+    "Expected article 54 for prohibited purpose",
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -66,8 +73,14 @@ Deno.test("R05 without aggregates-not-enough justification → APPROVE_STATISTIC
     result.decision === "APPROVE_STATISTICAL",
     `Expected APPROVE_STATISTICAL without SPE justification, got ${result.decision}`,
   );
-  assert(result.articles.includes("66"), "Expected article 66 for access application");
-  assert(result.articles.includes("69"), "Expected article 69 for statistical approval");
+  assert(
+    result.articles.includes("66"),
+    "Expected article 66 for access application",
+  );
+  assert(
+    result.articles.includes("69"),
+    "Expected article 69 for statistical approval",
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -80,7 +93,10 @@ Deno.test("ambiguous purpose sets needs_review = true", () => {
     question: "How many patients are there?",
   };
   const result = decide(req);
-  assert(result.needs_review === true, "Expected needs_review = true for ambiguous purpose");
+  assert(
+    result.needs_review === true,
+    "Expected needs_review = true for ambiguous purpose",
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -97,6 +113,87 @@ Deno.test("same input gives same output twice (consistency)", () => {
     assert(
       JSON.stringify(r1.articles.sort()) === JSON.stringify(r2.articles.sort()),
       `${id}: inconsistent articles`,
+    );
+  }
+});
+
+Deno.test("record vocabulary alone does not establish SPE necessity", () => {
+  for (
+    const phrase of [
+      "individual-level records",
+      "patient-level data",
+      "row-level histories",
+    ]
+  ) {
+    const result = decide({
+      requested_as: "health data access application",
+      purpose: "Clinical research. We would prefer " + phrase + ".",
+    });
+    assert(
+      result.decision === "APPROVE_STATISTICAL",
+      "A preference for records is not a necessity explanation",
+    );
+  }
+  const justified = decide({
+    requested_as: "health data access application",
+    purpose:
+      "Clinical research. Statistics are insufficient because we need linked longitudinal trajectories.",
+  });
+  assert(
+    justified.decision === "APPROVE_SPE",
+    "Explicit statistical insufficiency should justify an SPE",
+  );
+});
+
+Deno.test("disguised prohibited actions take priority in either purpose or question", () => {
+  for (
+    const action of [
+      "Build an underwriting score.",
+      "Rank job applicants for hiring.",
+      "Screen workers for promotion.",
+      "Create sales leads.",
+      "Develop alcoholic beverages.",
+      "Recover identities from pseudonyms.",
+      "Link pseudonyms to names.",
+    ]
+  ) {
+    for (const field of ["purpose", "question"]) {
+      const result = decide({
+        requested_as: "health data access application",
+        purpose: "Clinical research; statistics are not enough.",
+        [field]: action,
+      });
+      assert(
+        result.decision === "REJECT" && result.articles.includes("54"),
+        "Prohibited use escaped: " + action,
+      );
+    }
+  }
+  const safe = decide({
+    requested_as: "health data request",
+    purpose:
+      "Public health research into alcohol consumption and prevention of liver disease.",
+  });
+  assert(
+    safe.decision === "APPROVE_STATISTICAL",
+    "Alcohol health research is not product development",
+  );
+});
+
+Deno.test("prohibited action matching normalises line breaks and unicode hyphens", () => {
+  for (
+    const action of [
+      "Link pseudonyms\nto names.",
+      "Please re‐identify people using a named registry.",
+    ]
+  ) {
+    assert(
+      decide({
+        requested_as: "health data request",
+        purpose: "Clinical research",
+        question: action,
+      }).decision === "REJECT",
+      "Formatting must not disguise a prohibited action",
     );
   }
 });

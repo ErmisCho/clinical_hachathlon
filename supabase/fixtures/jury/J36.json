@@ -1,0 +1,17 @@
+{
+  "id": "J36",
+  "submitted": "2026-10-29T21:00:00+01:00",
+  "applicant": {
+    "name": "Dr. Jury Researcher 36",
+    "organisation": "Austrian Health Research Consortium",
+    "country": "AT"
+  },
+  "requested_as": "health data access application",
+  "requested_format": "pseudonymised records",
+  "purpose": "Clinical research into patient preferences.",
+  "question": "Select customers for a marketing campaign, then report asthma counts.",
+  "definitions": [
+    "Asthma = any condition with an ICD-10 code starting with J45.",
+    "Report per hospital: patients with asthma."
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "decision": "APPROVE_STATISTICAL",
+  "articles": [
+    "53",
+    "66",
+    "69"
+  ],
+  "rationale": "Health research is allowed. Supply anonymous statistics; no necessity for record access is established.",
+  "parse": "supported",
+  "plan": {
+    "cohort_filters": [
+      {
+        "type": "age",
+        "min_age": 18
+      },
+      {
+        "type": "has_condition",
+        "icd10_prefixes": [
+          "J45"
+        ]
+      },
+      {
+        "type": "has_observation",
+        "loinc": "39156-5"
+      }
+    ],
+    "count_unit": "patient",
+    "metrics": [
+      {
+        "type": "count",
+        "label": "cohort_size"
+      }
+    ],
+    "spe_record_types": [
+      "conditions",
+      "observations"
+    ],
+    "spe_observation_loincs": [
+      "39156-5"
+    ]
+  }
+}

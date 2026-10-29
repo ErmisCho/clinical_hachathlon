@@ -1,0 +1,18 @@
+{
+  "id": "J10",
+  "submitted": "2026-10-29T21:00:00+01:00",
+  "applicant": {
+    "name": "Dr. Jury Researcher 10",
+    "organisation": "Austrian Health Research Consortium",
+    "country": "AT"
+  },
+  "requested_as": "health data request",
+  "requested_format": "anonymised statistics",
+  "purpose": "Clinical research to improve public health planning.",
+  "question": "How many patients use an active antidepressant per region?",
+  "definitions": [
+    "Antidepressant = ATC codes beginning with N06AB.",
+    "A medication is active on 31 December 2025 if start_date is on or before that day and end_date is empty or on or after that day.",
+    "Report per region: patients with an active antidepressant."
+  ]
+}

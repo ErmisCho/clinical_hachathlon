@@ -1,0 +1,17 @@
+{
+  "id": "J32",
+  "submitted": "2026-10-29T21:00:00+01:00",
+  "applicant": {
+    "name": "Dr. Jury Researcher 32",
+    "organisation": "Austrian Health Research Consortium",
+    "country": "AT"
+  },
+  "requested_as": "health data access application",
+  "requested_format": "pseudonymised records",
+  "purpose": "Research to develop alcoholic beverages tailored to people with metabolic disease.",
+  "question": "Count asthma patients by hospital.",
+  "definitions": [
+    "Asthma = any condition with an ICD-10 code starting with J45.",
+    "Report per hospital: patients with asthma."
+  ]
+}

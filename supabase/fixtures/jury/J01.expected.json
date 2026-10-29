@@ -1,0 +1,31 @@
+{
+  "decision": "APPROVE_STATISTICAL",
+  "articles": [
+    "53",
+    "69"
+  ],
+  "rationale": "Health research is allowed. Supply anonymous statistics; no necessity for record access is established.",
+  "parse": "supported",
+  "plan": {
+    "cohort_filters": [
+      {
+        "type": "has_condition",
+        "icd10_prefixes": [
+          "J45"
+        ]
+      }
+    ],
+    "count_unit": "patient",
+    "metrics": [
+      {
+        "type": "count",
+        "label": "asthma_patients"
+      }
+    ],
+    "dimensions": [
+      {
+        "by": "region"
+      }
+    ]
+  }
+}

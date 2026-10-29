@@ -1,0 +1,17 @@
+{
+  "id": "J02",
+  "submitted": "2026-10-29T21:00:00+01:00",
+  "applicant": {
+    "name": "Dr. Jury Researcher 2",
+    "organisation": "Austrian Health Research Consortium",
+    "country": "AT"
+  },
+  "requested_as": "health data request",
+  "requested_format": "anonymised statistics",
+  "purpose": "Clinical research to improve public health planning.",
+  "question": "Count patients with depression by hospital (data_holder) for service planning.",
+  "definitions": [
+    "Depression = any condition with an ICD-10 code beginning with F32.",
+    "Report per hospital (data_holder): patients with depression."
+  ]
+}
