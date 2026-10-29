@@ -26,7 +26,16 @@ export interface DecisionResult {
   articles: string[];
   reason: string;
   needs_review: boolean;
+  /** EXACT substrings of purpose/question (just the regex match, no ellipses):
+   *  – REJECT: the literal matched text from the prohibited-purpose rule
+   *  – APPROVE_SPE: the literal SPE justification phrase(s)
+   *  – APPROVE_STATISTICAL: the literal allowed-purpose phrase
+   *  Deduplicated; safe for verbatim substring checks.
+   */
   matched: string[];
+  /** Display contexts: the same matches but with surrounding words and "…"
+   *  markers added. Parallel to matched[]. */
+  matched_context: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -139,6 +148,36 @@ const SPE_JUSTIFICATION_PATTERNS: RegExp[] = [
 ];
 
 // ---------------------------------------------------------------------------
+// Helper: extract the actual matched substring from the request text
+// ---------------------------------------------------------------------------
+
+/** Returns the matched substring expanded to the nearest word boundary so
+ *  stem patterns like /\badvertis/ return "advertising" not "advertis". */
+function extractMatch(text: string, pattern: RegExp): string | null {
+  const flags = pattern.flags.includes("g") ? pattern.flags : pattern.flags + "g";
+  const re = new RegExp(pattern.source, flags);
+  const m = re.exec(text);
+  if (!m) return null;
+  const end = m.index + m[0].length;
+  // Extend to next word boundary (consume remaining word characters).
+  const tail = text.slice(end).match(/^\w+/);
+  return m[0] + (tail ? tail[0] : "");
+}
+
+/** Extract a context window around a match: up to `ctx` chars of surrounding
+ *  words so the quoted phrase reads naturally. */
+function matchContext(text: string, pattern: RegExp, ctx = 60): string | null {
+  const m = pattern.exec(text);
+  if (!m) return null;
+  const start = Math.max(0, m.index - ctx);
+  const end = Math.min(text.length, m.index + m[0].length + ctx);
+  let snippet = text.slice(start, end).trim();
+  if (start > 0) snippet = "…" + snippet;
+  if (end < text.length) snippet = snippet + "…";
+  return snippet;
+}
+
+// ---------------------------------------------------------------------------
 // Main decision function
 // ---------------------------------------------------------------------------
 export function decide(req: HealthDataRequest): DecisionResult {
@@ -146,28 +185,46 @@ export function decide(req: HealthDataRequest): DecisionResult {
     .normalize("NFKC").replace(/[\u2010-\u2015]/g, "-").replace(/\s+/g, " ");
 
   // Step 1 – check prohibited purposes (Art. 54)
-  const prohibitedMatched: string[] = [];
+  const prohibitedMatchedLabels: string[] = [];
+  const prohibitedExact: string[] = [];
+  const prohibitedCtx: string[] = [];
   for (const rule of PROHIBITED_RULES) {
     for (const pattern of rule.patterns) {
-      if (pattern.test(text)) {
-        prohibitedMatched.push(rule.label);
+      const raw = extractMatch(text, pattern);
+      if (raw !== null) {
+        prohibitedMatchedLabels.push(rule.label);
+        prohibitedExact.push(raw);
+        prohibitedCtx.push(matchContext(text, pattern, 50) ?? raw);
         break; // only count each rule once
       }
     }
   }
-  if (prohibitedMatched.length > 0) {
+  if (prohibitedMatchedLabels.length > 0) {
     return {
       decision: "REJECT",
       articles: ["54"],
-      reason: buildRejectReason(prohibitedMatched),
+      reason: buildRejectReason(prohibitedMatchedLabels),
       needs_review: false,
-      matched: prohibitedMatched,
+      matched: dedup(prohibitedExact),
+      matched_context: prohibitedCtx,
     };
   }
 
   // Determine needs_review: purpose matches neither allowed nor prohibited
   const isAllowed = ALLOWED_PATTERNS.some((p) => p.test(text));
   const needs_review = !isAllowed;
+
+  // Extract exact allowed-purpose match (first match only, one phrase)
+  let allowedExact: string[] = [];
+  let allowedCtx: string[] = [];
+  for (const pattern of ALLOWED_PATTERNS) {
+    const raw = extractMatch(text, pattern);
+    if (raw !== null) {
+      allowedExact = [raw];
+      allowedCtx = [matchContext(text, pattern, 60) ?? raw];
+      break;
+    }
+  }
 
   const requestedAs = (req.requested_as ?? "").toLowerCase();
 
@@ -179,19 +236,23 @@ export function decide(req: HealthDataRequest): DecisionResult {
       reason:
         "Your purpose is an allowed use of health data (Art. 53). Anonymised statistics are sufficient to answer the question (Art. 69).",
       needs_review,
-      matched: [],
+      matched: allowedExact,
+      matched_context: allowedCtx,
     };
   }
 
   // Step 3 / Step 4 – "health data access application"
-  const speMatched: string[] = [];
+  const speExact: string[] = [];
+  const speCtx: string[] = [];
   for (const pattern of SPE_JUSTIFICATION_PATTERNS) {
-    if (pattern.test(text)) {
-      speMatched.push(pattern.source);
+    const raw = extractMatch(text, pattern);
+    if (raw !== null) {
+      speExact.push(raw);
+      speCtx.push(matchContext(text, pattern, 60) ?? raw);
     }
   }
 
-  if (speMatched.length > 0) {
+  if (speExact.length > 0) {
     // Step 3 – explains why statistics are not enough → APPROVE_SPE
     return {
       decision: "APPROVE_SPE",
@@ -199,7 +260,8 @@ export function decide(req: HealthDataRequest): DecisionResult {
       reason:
         "Your purpose is an allowed use of health data (Art. 53). You have explained why anonymised statistics are not sufficient; pseudonymised patient-level data is justified (Art. 66). Access is granted inside a secure processing environment under a data permit (Art. 68, 73).",
       needs_review,
-      matched: speMatched,
+      matched: dedup(speExact),
+      matched_context: speCtx,
     };
   }
 
@@ -210,8 +272,14 @@ export function decide(req: HealthDataRequest): DecisionResult {
     reason:
       "Your purpose is an allowed use of health data (Art. 53). Anonymised statistics are sufficient to answer the question; pseudonymised records are not justified under Art. 66. Your request is approved as statistics (Art. 69).",
     needs_review,
-    matched: [],
+    matched: allowedExact,
+    matched_context: allowedCtx,
   };
+}
+
+/** Deduplicate an array while preserving order. */
+function dedup(arr: string[]): string[] {
+  return [...new Set(arr)];
 }
 
 // ---------------------------------------------------------------------------

@@ -140,11 +140,14 @@ Deno.test("parse failure: needs_review is true, answer is null, parse_errors pre
 Deno.test("APPROVE_STATISTICAL: runPlan is called, answer returned", async () => {
   // Engine expects: universe query per dimension + count query per metric.
   // STAT_REQUEST has one region dimension and one count metric.
+  // Then pipeline queries eligible_patients count.
   const sql = makeFakeSql([
     // universe for region dimension
     [{ value: "Wien" }, { value: "Steiermark" }],
     // count metric rows
     [{ g0: "Wien", n: "120" }, { g0: "Steiermark", n: "95" }],
+    // population query: eligible_patients count
+    [{ n: "950" }],
   ]);
   const resp = await answerRequest(STAT_REQUEST, sql);
   assert(
@@ -158,6 +161,17 @@ Deno.test("APPROVE_STATISTICAL: runPlan is called, answer returned", async () =>
     !Array.isArray(resp.parse_errors),
     "parse_errors must not be present on success",
   );
+  // population has eligible_patients only — no opt-out count
+  const pop = (resp as unknown as Record<string, unknown>).population as Record<string, unknown>;
+  assert(typeof pop === "object", "population must be present");
+  assert("eligible_patients" in pop, "population must have eligible_patients");
+  assert(!("opted_out_excluded" in pop), "population must NOT have opted_out_excluded");
+  assert(!("total_patients" in pop), "population must NOT have total_patients");
+  // No opt-out key anywhere in the response
+  assert(
+    !/"opt.?out"/i.test(JSON.stringify(resp)),
+    "response must not contain any opt-out field",
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -167,10 +181,12 @@ Deno.test("APPROVE_SPE: createSpe is called, cohort_size and spe_schema returned
   // createSpe issues: DROP SCHEMA, CREATE SCHEMA, REVOKE, GRANT, CREATE TABLE patients,
   // ALTER TABLE (RLS), REVOKE, GRANT (for patients), then per-record-table (conditions):
   // CREATE, ALTER, REVOKE, GRANT (4 stmts), then a COUNT query outside the transaction.
-  // The fake sql above returns [] for all DDL and [{n:"42"}] for the COUNT.
+  // The fake sql returns [] for all DDL, [{n:"42"}] for the COUNT, then eligible_patients.
   const ddlRows: Record<string, unknown>[][] = Array.from({ length: 20 }, () => []);
-  // Final call: SELECT COUNT(*) → cohort size
+  // createSpe COUNT query → cohort size
   ddlRows.push([{ n: "42" }]);
+  // pipeline population query: eligible_patients count
+  ddlRows.push([{ n: "1900" }]);
   const sql = makeFakeSql(ddlRows);
   const resp = await answerRequest(SPE_REQUEST, sql);
   assert(
@@ -190,5 +206,51 @@ Deno.test("APPROVE_SPE: createSpe is called, cohort_size and spe_schema returned
   assert(
     !Array.isArray(resp.parse_errors),
     "parse_errors must not be present on success",
+  );
+  // population has eligible_patients only — no opt-out count
+  const pop = (resp as unknown as Record<string, unknown>).population as Record<string, unknown>;
+  assert(typeof pop === "object", "population must be present");
+  assert("eligible_patients" in pop, "population must have eligible_patients");
+  assert(!("opted_out_excluded" in pop), "population must NOT have opted_out_excluded");
+  // No opt-out key anywhere in the response
+  assert(
+    !/"opt.?out"/i.test(JSON.stringify(resp)),
+    "response must not contain any opt-out field",
+  );
+});
+
+// ---------------------------------------------------------------------------
+// 5. No opt-out information leaks in any pipeline response
+// ---------------------------------------------------------------------------
+Deno.test("no response contains a key matching /opt.?out/i", async () => {
+  // REJECT — no sql called
+  const rejectSql = makeFakeSql();
+  const rej = await answerRequest(REJECT_REQUEST, rejectSql);
+  assert(
+    !/"opt.?out"/i.test(JSON.stringify(rej)),
+    "REJECT response must not contain any opt-out field",
+  );
+
+  // APPROVE_STATISTICAL
+  const statSql = makeFakeSql([
+    [{ value: "Wien" }, { value: "Steiermark" }],
+    [{ g0: "Wien", n: "10" }, { g0: "Steiermark", n: "5" }],
+    [{ n: "500" }], // eligible_patients
+  ]);
+  const stat = await answerRequest(STAT_REQUEST, statSql);
+  assert(
+    !/"opt.?out"/i.test(JSON.stringify(stat)),
+    "APPROVE_STATISTICAL response must not contain any opt-out field",
+  );
+
+  // APPROVE_SPE
+  const speDdl: Record<string, unknown>[][] = Array.from({ length: 20 }, () => []);
+  speDdl.push([{ n: "7" }]);   // cohort count
+  speDdl.push([{ n: "500" }]); // eligible_patients
+  const speSql = makeFakeSql(speDdl);
+  const spe = await answerRequest(SPE_REQUEST, speSql);
+  assert(
+    !/"opt.?out"/i.test(JSON.stringify(spe)),
+    "APPROVE_SPE response must not contain any opt-out field",
   );
 });

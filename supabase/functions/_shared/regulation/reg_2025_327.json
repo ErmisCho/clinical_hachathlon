@@ -1,0 +1,214 @@
+{
+  "source_url": "https://eur-lex.europa.eu/eli/reg/2025/327/oj/eng",
+  "retrieved_at": "2025-05-03T23:07:27Z",
+  "articles": {
+    "53": {
+      "title": "Purposes for which electronic health data can be processed for secondary use",
+      "paragraphs": [
+        {
+          "ref": "1",
+          "text": "1. Health data access bodies shall only grant access to electronic health data referred to in Article 51 for secondary use to a health data user where the processing of the data by that health data user is necessary for one of the following purposes: (a) the public interest in the areas of public or occupational health, such as activities to protect against serious cross-border threats to health, public health surveillance or activities ensuring high levels of quality and safety of healthcare, including patient safety, and of medicinal products or medical devices; (b) policymaking and regulatory activities to support public sector bodies or Union institutions, bodies, offices or agencies, including regulatory authorities, in the health or care sector to carry out their tasks defined in their mandates; (c) statistics as defined in Article 3, point (1), of Regulation (EC) No 223/2009, such as national, multi-national and Union-level official statistics, related to health or care sectors; (d) education or teaching activities in health or care sectors at vocational or higher education level; (e) scientific research related to health or care sectors that contributes to public health or health technology assessments, or ensures high levels of quality and safety of healthcare, of medicinal products or of medical devices, with the aim of benefiting end-users, such as patients, health professionals and health administrators, including: (i) development and innovation activities for products or services; (ii) training, testing and evaluation of algorithms, including in medical devices, in vitro diagnostic medical devices, AI systems and digital health applications; (f) improvement of the delivery of care, of the optimisation of treatment and of the provision of healthcare, based on the electronic health data of other natural persons."
+        },
+        {
+          "ref": "2",
+          "text": "2. Access to electronic health data for the purposes referred to in paragraph 1, points (a), (b) and (c), shall be reserved for public sector bodies and Union institutions, bodies, offices and agencies exercising the tasks conferred on them by Union or national law, including where processing of data for carrying out those tasks is done by a third party on behalf of those public sector bodies or of Union institutions, bodies, offices and agencies."
+        }
+      ]
+    },
+    "54": {
+      "title": "Prohibited secondary use",
+      "paragraphs": [
+        {
+          "ref": "1",
+          "text": "Health data users shall only process electronic health data for secondary use on the basis of and in accordance with the purposes contained in a data permit issued pursuant to Article 68, health data requests approved pursuant to Article 69 or, in situations referred to in Article 67(3), an access approval from the relevant authorised participant in HealthData@EU referred to in Article 75. In particular, seeking access to and processing electronic health data obtained via a data permit issued pursuant to Article 68 or a health data request approved pursuant to Article 69 for the following uses shall be prohibited: taking decisions detrimental to a natural person or a group of natural persons based on their electronic health data; in order to qualify as ‘decisions’ for the purposes of this point, they have to produce legal, social or economic effects or similarly significantly affect those natural persons; taking decisions in relation to a natural person or a group of natural persons in relation to job offers, offering less favourable terms in the provision of goods or services, including exclusion of such persons or groups from the benefit of an insurance or credit contract, the modification of their contributions and insurance premiums or conditions of loans, or taking any other decisions in relation to a natural person or a group of natural persons which result in discriminating against them on the basis of the health data obtained; carrying out advertising or marketing activities; developing products or services that may harm individuals, public health or society at large, such as illicit drugs, alcoholic beverages, tobacco and nicotine products, weaponry or products or services which are designed or modified in such a way that they create addiction, contravene public order or cause a risk for human health; carrying out activities in conflict with ethical provisions laid down in national law."
+        }
+      ]
+    },
+    "66": {
+      "title": "Data minimisation and purpose limitation",
+      "paragraphs": [
+        {
+          "ref": "1",
+          "text": "1. Where health data access bodies receive a health data access application, they shall ensure that access is only provided to electronic health data that are adequate, relevant and limited to what is necessary in relation to the purpose of processing indicated in the health data access application by the health data user and in line with the data permit issued pursuant to Article 68."
+        },
+        {
+          "ref": "2",
+          "text": "2. Health data access bodies shall provide electronic health data in an anonymised format, where the purpose of processing by the health data user can be achieved with such data, taking into account the information provided by the health data user."
+        },
+        {
+          "ref": "3",
+          "text": "3. Where the health data user has sufficiently demonstrated that the purpose of processing cannot be achieved with anonymised data in accordance with Article 68(1), point (c), health data access bodies shall provide access to electronic health data in pseudonymised format. The information necessary to reverse the pseudonymisation shall be available only to the health data access body or an entity that acts as a trusted third party in accordance with national law."
+        }
+      ]
+    },
+    "67": {
+      "title": "Health data access applications",
+      "paragraphs": [
+        {
+          "ref": "1",
+          "text": "1. A natural or legal person may submit a health data access application for the purposes referred to in Article 53(1) to a health data access body."
+        },
+        {
+          "ref": "2",
+          "text": "2. The health data access application shall include: (a) the health data applicant’s identity, a description of that health data applicant’s professional functions and activities, including the identity of the natural persons who would have access to the electronic health data if a data permit were issued; the health data applicant shall notify the health data access body of any update of the list of natural persons; (b) the purposes referred to in Article 53(1) for which access to data is applied for; (c) a detailed explanation of the intended use of the electronic health data and expected benefit related to that use and how that benefit would contribute to the purposes referred to in Article 53(1); (d) a description of the requested electronic health data, including their scope, time range, format, sources and, where possible, the geographical coverage where such data are requested from health data holders in several Member States or from authorised participants in HealthData@EU referred to in Article 75; (e) a description explaining whether the electronic health data need to be made available in a pseudonymised or anonymised format; in the case of a pseudonymised format, a justification as to why the processing cannot be carried out using anonymised data; (f) where the health data applicant intends to bring datasets already held by that health data applicant into the secure processing environment, a description of those datasets; (g) a description of the safeguards, which are to be proportionate to the risks, planned to prevent any misuse of the electronic health data, as well as to protect the rights and interests of the health data holder and of the natural persons concerned, including to prevent any re-identification of natural persons in the dataset; (h) a justified indication of the period during which the electronic health data are needed for processing in a secure processing environment; (i) a description of the tools and computing resources needed for a secure processing environment; (j) where applicable, information on any assessment of ethical aspects of the processing, required under national law, which may serve to replace the health data applicant’s own ethics assessment; (k) where the health data applicant intends to make use of an exception under Article 71(4), the justification required by national law pursuant to that Article."
+        },
+        {
+          "ref": "3",
+          "text": "3. When seeking access to electronic health data held by health data holders established in more than one Member State or from the relevant authorised participants in HealthData@EU referred to in Article 75, the health data applicant shall submit a single health data access application through the health data access body of the Member State where the main establishment of the health data applicant is located, through the health data access body of the Member State in which one of those health data holders is established or through the services provided by the Commission in HealthData@EU referred to in Article 75. The health data access application shall be automatically forwarded to the relevant authorised participants in HealthData@EU and to the health data access bodies of the Member States where the health data holders identified in the health data access application are established."
+        },
+        {
+          "ref": "4",
+          "text": "4. When seeking access to the personal electronic health data in a pseudonymised format, the health data applicant shall provide, together with the health data access application, a description of how the processing would comply with applicable Union and national law on data protection and privacy, in particular with Regulation (EU) 2016/679 and, more specifically, with Article 6(1) thereof."
+        },
+        {
+          "ref": "5",
+          "text": "5. Public sector bodies and Union institutions, bodies, offices and agencies shall provide the same information as required under paragraphs 2 and 4, except for paragraph 2, point (h), in which case they shall submit instead information concerning the period for which the electronic health data can be accessed, the frequency of that access or the frequency of the data updates."
+        }
+      ]
+    },
+    "68": {
+      "title": "Data permit",
+      "paragraphs": [
+        {
+          "ref": "1",
+          "text": "1. For the purposes of granting access to electronic health data, the health data access bodies shall assess whether all the following criteria are fulfilled: (a) the purposes described in the health data access application correspond to one or more of the purposes listed in Article 53(1); (b) the requested data are necessary, adequate and proportionate for the purposes described in the health data access application, taking into account data minimisation and purpose limitation requirements provided for in Article 66; (c) the processing complies with Article 6(1) of Regulation (EU) 2016/679 and, in the case of pseudonymised data, there is sufficient justification that the purpose cannot be achieved with anonymised data; (d) the health data applicant is qualified in relation to the intended purposes of data use and has appropriate expertise, including professional qualifications in the areas of healthcare, care, public health or research, consistent with ethical practice and applicable laws and regulations; (e) the health data applicant demonstrates sufficient technical and organisational measures to prevent the misuse of the electronic health data and to protect the rights and interests of the health data holder and of the natural persons concerned; (f) the information on the assessment of ethical aspects of the processing, referred to in Article 67(2), point (j), where applicable, complies with national law; (g) where the health data applicant intends to make use of an exception under Article 71(4), the justification required by national law adopted pursuant to that Article has been provided; (h) all other requirements in this Chapter are fulfilled by the health data applicant."
+        },
+        {
+          "ref": "2",
+          "text": "2. The health data access body shall also take into account the following: (a) risks for national defence, security, public security and public order; (b) the risk of undermining the confidentiality of data in governmental databases of regulatory authorities."
+        },
+        {
+          "ref": "3",
+          "text": "3. Where the health data access body concludes that the requirements in paragraph 1 are fulfilled and the risks referred to in paragraph 2 are sufficiently mitigated, the health data access body shall grant access to electronic health data by issuing a data permit. Health data access bodies shall refuse all health data access applications where the requirements in this Chapter are not fulfilled. Where the requirements for issuing a data permit are not met, but the requirements to provide a response in an anonymised statistical format under Article 69 are, the health data access body may decide to provide such response, on condition that providing that response would mitigate the risks and, if the purpose of the health data access application can be fulfilled in this manner, that the health data applicant agrees to receiving a response in an anonymised statistical format under Article 69."
+        },
+        {
+          "ref": "4",
+          "text": "4. By way of derogation from Regulation (EU) 2022/868, the health data access body shall issue or refuse a data permit within three months of receiving a complete health data access application. If the health data access body finds that the health data access application is incomplete, it shall notify the health data applicant, which shall be given the possibility of completing that application. If the health data applicant does not complete the health data access application within four weeks, the data permit shall not be issued. The health data access body may extend the period for responding to a health data access application by three additional months where necessary, taking into account the urgency and complexity of the health data access application and the volume of health data access applications submitted for decision. In such cases, the health data access body shall notify the health data applicant as soon as possible that more time is needed for examining the health data access application, together with the reasons for the delay."
+        },
+        {
+          "ref": "5",
+          "text": "5. When handling a health data access application for cross-border access to electronic health data referred to in Article 67(3), health data access bodies and relevant authorised participants in HealthData@EU referred to in Article 75 shall remain responsible for adopting decisions to grant or refuse access to electronic health data within their remit in accordance with this Chapter. The health data access bodies and authorised participants in HealthData@EU concerned shall inform each other of their decisions. They may take that information into consideration when deciding on granting or refusing access to electronic health data. A data permit issued by one health data access body may benefit from mutual recognition by the other health data access bodies."
+        },
+        {
+          "ref": "6",
+          "text": "6. Member States shall provide for an accelerated health data access application procedure for public sector bodies and Union institutions, bodies, offices and agencies with a legal mandate in the field of public health if the processing of electronic health data is to be carried out for the purposes established in Article 53(1), points (a), (b) and (c). When such accelerated procedure applies, the health data access body shall issue or refuse a data permit within two months of receiving a complete health data access application. The health data access body may extend the period for responding to a health data access application by one additional month where necessary."
+        },
+        {
+          "ref": "7",
+          "text": "7. Following the issuance of the data permit, the health data access body shall immediately request the electronic health data from the health data holder. The health data access body shall make available the electronic health data to the health data user within two months of receiving them from the health data holders, unless the health data access body specifies that the data are to be provided within a longer specified timeframe."
+        },
+        {
+          "ref": "8",
+          "text": "8. In cases referred to in paragraph 5, first subparagraph, of this Article, the health data access bodies and authorised participants in HealthData@EU which issued a data permit or access approval, respectively, may decide to provide access to the electronic health data in the secure processing environment provided by the Commission as referred to in Article 75(9)."
+        },
+        {
+          "ref": "9",
+          "text": "9. Where the health data access body refuses to issue a data permit, it shall provide a justification for that refusal to the health data applicant."
+        },
+        {
+          "ref": "10",
+          "text": "10. When issuing a data permit, the health data access body shall set out in that data permit the general conditions applicable to the health data user. The data permit shall contain the following: (a) the categories, specification and format of the electronic health data to be accessed, which are covered by the data permit, including their sources and an indication of whether the electronic health data are to be accessed in a pseudonymised format in the secure processing environment; (b) a detailed description of the purpose for which the electronic health data are made available; (c) where a mechanism to implement an exception is provided for and applicable under Article 71(4), information on whether it has been applied and the reason for the related decision; (d) the identity of authorised persons, in particular the identity of the principal investigator, with access rights to the electronic health data in the secure processing environment; (e) the duration of the data permit; (f) information about the technical characteristics and tools available to the health data user within the secure processing environment; (g) the fees to be paid by the health data user; (h) any specific conditions."
+        },
+        {
+          "ref": "11",
+          "text": "11. Health data users shall have the right to access and process the electronic health data in a secure processing environment in accordance with the data permit issued to them on the basis of this Regulation."
+        },
+        {
+          "ref": "12",
+          "text": "12. A data permit shall be issued for the duration necessary to fulfil the requested purposes and that duration shall not exceed 10 years. That duration may be extended once, for a period which does not exceed 10 years, at the request of the health data user, based on arguments and documents to justify that extension which shall be provided one month before the expiry of the data permit. The health data access body may charge fees which increase to reflect the costs and risks of storing electronic health data for a period exceeding the initial period. In order to reduce such costs and fees, the health data access body may also propose to the health data user to store the dataset in a storage system with reduced capabilities. Such reduced capabilities shall not affect the security of the processed dataset. The electronic health data within the secure processing environment shall be deleted within six months of the expiry of the data permit. At the request of the health data user, the formula for the creation of the requested dataset may be stored by the health data access body."
+        },
+        {
+          "ref": "13",
+          "text": "13. If the data permit needs to be updated, the health data user shall submit a request for an amendment of the data permit."
+        },
+        {
+          "ref": "14",
+          "text": "14. The Commission may, by means of an implementing act, develop a logo for acknowledging the contribution of the EHDS. That implementing act shall be adopted in accordance with the examination procedure referred to in Article 98(2)."
+        }
+      ]
+    },
+    "69": {
+      "title": "Health data request",
+      "paragraphs": [
+        {
+          "ref": "1",
+          "text": "1. The health data applicant may submit a health data request for the purposes referred to in Article 53 with the aim of obtaining a response only in an anonymised statistical format. A health data access body shall not provide a response to a health data request in any other format and the health data user shall have no access to the electronic health data used to provide that response."
+        },
+        {
+          "ref": "2",
+          "text": "2. A health data request as referred to in paragraph 1 shall include the following information: (a) the identity of the health data applicant and a description of that health data applicant’s professional functions and activities; (b) a detailed explanation of the intended use of the electronic health data, including the purposes referred to in Article 53(1) for which the health data request is submitted; (c) a description of the requested electronic health data, their format and the sources of those data, where possible; (d) a description of the statistical content; (e) a description of the safeguards planned to prevent any misuse of the requested electronic health data; (f) a description of how the processing would comply with Article 6(1) of Regulation (EU) 2016/679 or Article 5(1) and Article 10(2) of Regulation (EU) 2018/1725; (g) where the health data applicant intends to make use of an exception under Article 71(4), the justification required in that regard by national law pursuant to that Article."
+        },
+        {
+          "ref": "3",
+          "text": "3. The health data access body shall assess if the health data request is complete and take into account the risks referred to in Article 68(2)."
+        },
+        {
+          "ref": "4",
+          "text": "4. The health data access body shall assess the health data request within three months of receipt of the request and, where possible, subsequently provide the response to the health data user within a further three months."
+        }
+      ]
+    },
+    "71": {
+      "title": "Right to opt out from the processing of personal electronic health data for secondary use",
+      "paragraphs": [
+        {
+          "ref": "1",
+          "text": "1. Natural persons shall have the right to opt out at any time, and without providing any reason, from the processing of personal electronic health data relating to them for secondary use under this Regulation. The exercise of that right shall be reversible."
+        },
+        {
+          "ref": "2",
+          "text": "2. Member States shall provide for an accessible and easily understandable opt-out mechanism to exercise the right established in paragraph 1, whereby natural persons may explicitly state that they do not wish to have their personal electronic health data processed for secondary use."
+        },
+        {
+          "ref": "3",
+          "text": "3. Once natural persons have exercised the right to opt out, and where personal electronic health data relating to them can be identified in a dataset, personal electronic health data relating to those natural persons shall not be made available or otherwise processed pursuant to data permits issued under Article 68 or health data requests under Article 69 approved after the natural person has exercised the right to opt out. The first subparagraph of this paragraph shall not affect the processing for secondary use of personal electronic health data relating to those natural persons pursuant to data permits or health data requests that were issued or approved before the natural persons exercised their right to opt out."
+        },
+        {
+          "ref": "4",
+          "text": "4. By way of exception from the right to opt out provided for in paragraph 1, a Member State may provide in its national law for a mechanism to make data for which a right to opt out has been exercised available, provided that all the following conditions are fulfilled: (a) the health data access application or health data request is submitted by a public sector body or a Union institution, body, office or agency with a mandate to carry out tasks in the area of public health, or by another entity entrusted with carrying out public tasks in the area of public health, or acting on behalf of or commissioned by a public authority, and the processing of those data is necessary for any of the following purposes: (i) the purposes referred to in Article 53(1), points (a), (b) and (c); (ii) scientific research for important reasons of public interest; (b) those data cannot be obtained by alternative means in a timely and effective manner under equivalent conditions; (c) the health data applicant has provided the justification referred to in Article 68(1), point (g), or in Article 69(2), point (g). The national law providing for such a mechanism shall provide for specific and suitable measures in order to protect the fundamental rights and the personal data of natural persons. Where a Member State has provided in its national law for the possibility to request access to data for which a right to opt out has been exercised and the conditions referred to in the first subparagraph of this paragraph are fulfilled, those data may be included when carrying out the tasks under Article 57(1), points (a)(i), (a)(iii) and (b)."
+        },
+        {
+          "ref": "5",
+          "text": "5. The rules on any mechanism to implement exceptions provided for under paragraph 4 by way of exception from paragraph 1 shall respect the essence of the fundamental rights and freedoms and shall be a necessary and proportionate measure in a democratic society to fulfil purposes of public interest in the area of legitimate scientific and societal objectives."
+        },
+        {
+          "ref": "6",
+          "text": "6. Any processing carried out in accordance with a mechanism to implement exceptions provided for under paragraph 4 of this Article shall comply with the requirements of this Chapter, in particular the prohibition on re-identifying or attempting to re-identify natural persons in accordance with Article 61(3). Any legislative measure providing for a mechanism in national law as referred to in paragraph 4 of this Article shall include specific provisions for the safety, and the protection of the rights, of natural persons."
+        },
+        {
+          "ref": "7",
+          "text": "7. Member States shall notify without delay the Commission of the provisions of their national law which they adopt pursuant to paragraph 4 and of any subsequent amendment affecting them."
+        },
+        {
+          "ref": "8",
+          "text": "8. When the purposes of the processing of personal electronic health data by a health data holder do not or no longer require the identification of a data subject by the controller, that health data holder shall not be obliged to maintain, acquire or process additional information in order to identify the data subject for the sole purpose of complying with the right to opt out under this Article."
+        }
+      ]
+    },
+    "73": {
+      "title": "Secure processing environment",
+      "paragraphs": [
+        {
+          "ref": "1",
+          "text": "1. Health data access bodies shall provide access to electronic health data pursuant to a data permit only through a secure processing environment which is subject to technical and organisational measures and security and interoperability requirements. In particular, the secure processing environment shall comply with the following security measures: (a) the restriction of access to the secure processing environment to authorised natural persons listed in the data permit issued pursuant to Article 68; (b) the minimisation of the risk of the unauthorised reading, copying, modification or removal of electronic health data hosted in the secure processing environment through state-of-the-art technical and organisational measures; (c) the limitation of the input of electronic health data and the inspection, modification or deletion of electronic health data hosted in the secure processing environment to a limited number of authorised identifiable individuals; (d) ensuring that health data users have access only to the electronic health data covered by their data permit, by means of individual and unique user identities and confidential access modes only; (e) the keeping of identifiable logs of access to and activities in the secure processing environment for the period necessary to verify and audit all processing operations in that environment; logs of access shall be kept for at least one year; (f) ensuring compliance and monitoring the security measures referred to in this paragraph to mitigate potential security threats."
+        },
+        {
+          "ref": "2",
+          "text": "2. Health data access bodies shall ensure that electronic health data from health data holders in the format specified in the data permit can be uploaded by those health data holders and can be accessed by the health data user in a secure processing environment. Health data access bodies shall review the electronic health data included in a download request to ensure that health data users are only able to download non-personal electronic health data, including electronic health data in an anonymised statistical format, from the secure processing environment."
+        },
+        {
+          "ref": "3",
+          "text": "3. Health data access bodies shall ensure that audits of the secure processing environments are carried out on a regular basis, including by third parties, and shall take corrective action for any shortcomings, risks or vulnerabilities identified by those audits in the secure processing environments."
+        },
+        {
+          "ref": "4",
+          "text": "4. Where recognised data altruism organisations under Chapter IV of Regulation (EU) 2022/868 process personal electronic health data using a secure processing environment, those environments shall also comply with the security measures set out in paragraph 1, points (a) to (f), of this Article."
+        },
+        {
+          "ref": "5",
+          "text": "5. By 26 March 2027, the Commission shall, by means of implementing acts, lay down the technical, organisational, information security, confidentiality, data protection and interoperability requirements for the secure processing environments, including with regard to the technical characteristics and tools available to the health data user within the secure processing environments. Those implementing acts shall be adopted in accordance with the examination procedure referred to in Article 98(2)."
+        }
+      ]
+    }
+  }
+}

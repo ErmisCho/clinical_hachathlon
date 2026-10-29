@@ -53,16 +53,31 @@ definitions produce a saved review result with `parse_errors`, not HTTP 400.
 
 The response is the complete pipeline result:
 
-| Field          | Shape                                                                                    |
-| -------------- | ---------------------------------------------------------------------------------------- |
-| `request_id`   | Submitted `id`                                                                           |
-| `decision`     | `REJECT`, `APPROVE_STATISTICAL`, or `APPROVE_SPE`                                        |
-| `articles`     | Array of article number strings                                                          |
-| `reason`       | Explanation string                                                                       |
-| `needs_review` | Boolean; also true for parse failures                                                    |
-| `answer`       | Aggregate object, SPE `{ "cohort_size": number }`, or `null` for rejection/parse failure |
-| `spe_schema`   | Present only for successful SPE creation, e.g. `spe_r05`                                 |
-| `parse_errors` | Present for parse failure: array of `{ "definition": string, "reason": string }`         |
+| Field                | Shape                                                                                                    |
+| -------------------- | -------------------------------------------------------------------------------------------------------- |
+| `request_id`         | Submitted `id`                                                                                           |
+| `decision`           | `REJECT`, `APPROVE_STATISTICAL`, or `APPROVE_SPE`                                                        |
+| `articles`           | Array of article number strings                                                                          |
+| `reason`             | Explanation string                                                                                       |
+| `needs_review`       | Boolean; also true for parse failures                                                                    |
+| `answer`             | Aggregate object, SPE `{ "cohort_size": number }`, or `null` for rejection/parse failure                 |
+| `spe_schema`         | Present only for successful SPE creation, e.g. `spe_r05`                                                 |
+| `parse_errors`       | Present for parse failure: array of `{ "definition": string, "reason": string }`                         |
+| `explanation`        | Present when quote verification passes (see below); omitted otherwise                                   |
+| `explanation_error`  | Present when explanation could not be verified; omitted otherwise                                        |
+| `population`         | Present for non-REJECT responses with a valid plan: `{ "eligible_patients": number }` — count from the `eligible_patients` view (opted-out rows already excluded) |
+
+The `explanation` object provides plain-language reasoning and verbatim regulation quotes:
+
+| Field                         | Shape                                                                                                  |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `explanation.rule`            | Plain-language rule name, e.g. `"Prohibited purpose (Art. 54)"`                                        |
+| `explanation.trigger_phrases` | Array of exact substrings from the request purpose/question that triggered the decision                |
+| `explanation.articles`        | Array of `{ number, title, summary, quote, ref }` — one entry per cited article                       |
+| `explanation.articles[].quote`| Verbatim paragraph text from Regulation (EU) 2025/327 (fetched from EUR-Lex; verified word-for-word)   |
+| `explanation.plan_summary`    | Plain-English description of the query plan, e.g. `"Patients aged 18+, with ICD-10 E11, counted per region"` |
+
+Quote verification: every `explanation.articles[].quote` is confirmed to be a verbatim (whitespace-normalised) substring of the stored regulation text in `supabase/functions/_shared/regulation/reg_2025_327.json`, and every `trigger_phrase` is a verbatim substring of the submitted request. If any check fails, `explanation` is omitted and `explanation_error` is set.
 
 Example statistical result (values illustrative):
 
@@ -76,6 +91,28 @@ Example statistical result (values illustrative):
   "answer": {
     "Wien": { "cohort": 263 },
     "Tirol": { "cohort": "<10" }
+  },
+  "population": { "eligible_patients": 9658 },
+  "explanation": {
+    "rule": "Approved for anonymised statistics – health data request (Art. 53, 69)",
+    "trigger_phrases": ["…We study regional differences in type 2 diabetes to plan a prevention programme…"],
+    "articles": [
+      {
+        "number": "53",
+        "title": "Purposes for which electronic health data can be processed for secondary use",
+        "summary": "Lists the allowed purposes for accessing health data for secondary use, including research, statistics, education, and quality improvement.",
+        "quote": "1. Health data access bodies shall only grant access to electronic health data referred to in Article 51 for secondary use to a health data user where the processing of the data by that health data user is necessary for one of the following purposes: …",
+        "ref": "Art. 53(1)"
+      },
+      {
+        "number": "69",
+        "title": "Health data request",
+        "summary": "Allows applicants to request anonymised statistical answers (a 'health data request') without needing a full data permit.",
+        "quote": "1. The health data applicant may submit a health data request for the purposes referred to in Article 53 with the aim of obtaining a response only in an anonymised format …",
+        "ref": "Art. 69(1)"
+      }
+    ],
+    "plan_summary": "Patients aged 18+ on 31 Dec 2025; counted per region; metrics: count of patients (adults), count of patients (type2_diabetes), prevalence_pct as a percentage"
   }
 }
 ```
