@@ -13,6 +13,8 @@ jobs:
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
+      - name: Install dependencies
+        run: deno install
       - run: deno test
       - name: Type check
         shell: bash
@@ -33,6 +35,9 @@ jobs:
         if: env.EVAL_BASE_URL != ''
         with:
           deno-version: v2.x
+      - name: Install dependencies
+        if: env.EVAL_BASE_URL != ''
+        run: deno install
       - name: Check out track data
         if: env.EVAL_BASE_URL != ''
         uses: actions/checkout@v4
