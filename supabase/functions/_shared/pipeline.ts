@@ -5,11 +5,12 @@
  *
  * Order:
  *   1. decide()         – REJECT short-circuits immediately; no patient data touched
- *   2. parseRequest()   – parse failure returns decision + needs_review + parse_errors
- *   3a. APPROVE_STATISTICAL → runPlan()
- *   3b. APPROVE_SPE        → createSpe()
+ *   2. hold flagged requests before any patient queries or SPE creation
+ *   3. parseRequest()   – parse failure returns decision + needs_review + parse_errors
+ *   4a. APPROVE_STATISTICAL → runPlan()
+ *   4b. APPROVE_SPE        → createSpe()
  *
- * Every non-error response with a valid plan also includes:
+ * Every executed response with a valid plan also includes:
  *   - explanation (when verifyQuotes passes; otherwise explanation_error is set)
  *   - population { eligible_patients } — count from eligible_patients view (opted-out already excluded)
  */
@@ -31,9 +32,10 @@ export interface PipelineResponse {
   decision: "REJECT" | "APPROVE_STATISTICAL" | "APPROVE_SPE";
   articles: string[];
   reason: string;
-  /** True when the decision requires human review (edge-case purpose). */
+  /** True when the purpose or definitions require human review. */
   needs_review: boolean;
-  /** Present and non-null only for APPROVE_STATISTICAL and APPROVE_SPE. */
+  status?: "staff_review" | "decided";
+  /** Non-null only after approval and successful parsing/execution. */
   answer: Answer | { cohort_size: number } | null;
   /** Present only for APPROVE_SPE. */
   spe_schema?: string;
@@ -77,16 +79,30 @@ async function queryPopulation(
 export async function answerRequest(
   request: unknown,
   sql: SqlClient,
+  /** Server-only staff instruction; never read from the applicant's JSON. */
+  review?: { decision?: PipelineResponse["decision"]; reason: string },
 ): Promise<PipelineResponse> {
   const req = request as HealthDataRequest;
   const request_id = typeof req?.id === "string" ? req.id : "";
 
   // Step 1 — decide first; never touch patient data for a REJECT.
   const decisionResult = decide(req);
+  if (review) {
+    decisionResult.needs_review = false;
+    if (review.decision) {
+      decisionResult.decision = review.decision;
+      decisionResult.articles = review.decision === "REJECT"
+        ? ["54"]
+        : review.decision === "APPROVE_SPE"
+        ? ["53", "66", "68", "73"]
+        : ["53", "69"];
+    }
+    decisionResult.reason = review.reason;
+  }
   const { decision, articles, reason, needs_review } = decisionResult;
 
-  if (decision === "REJECT") {
-    // Build explanation for the rejection (no plan needed)
+  if (decision === "REJECT" || needs_review) {
+    // Explain a rejection or held decision without touching patient data.
     let explanationField: PipelineResponse["explanation"] | undefined;
     let explanation_error: string | undefined;
     try {
@@ -105,6 +121,7 @@ export async function answerRequest(
       articles,
       reason,
       needs_review,
+      status: needs_review ? "staff_review" : "decided",
       answer: null,
     };
     if (explanationField) base.explanation = explanationField;
@@ -134,6 +151,7 @@ export async function answerRequest(
       articles,
       reason,
       needs_review: true,
+      status: "staff_review",
       answer: null,
       parse_errors: parsed.errors,
     };
@@ -179,6 +197,7 @@ export async function answerRequest(
     articles,
     reason,
     needs_review,
+    status: "decided",
     answer,
     population,
   };

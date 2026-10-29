@@ -21,6 +21,7 @@ class JsonParameter {
 function fakeSql(results: Record<string, unknown>[][] = []) {
   const calls: { text: string; params: unknown[] }[] = [];
   let closed = 0;
+  const actions: Record<string, unknown>[] = [];
   const stored: { request_id: unknown; request: unknown; response: unknown }[] =
     [];
   const sql: RequestDatabase = Object.assign(
@@ -47,6 +48,31 @@ function fakeSql(results: Record<string, unknown>[][] = []) {
           });
         }
         if (results.length) return Promise.resolve(results.shift()!);
+        if (
+          text.includes("SELECT id, request, response FROM public.request_log")
+        ) {
+          const index = stored.findLastIndex((row) =>
+            row.request_id === params[0]
+          );
+          return Promise.resolve(
+            index < 0 ? [] : [{ id: index + 1, ...stored[index] }],
+          );
+        }
+        if (text.includes("UPDATE public.request_log")) {
+          stored[Number(params[1]) - 1].response = params[0];
+        }
+        if (text.includes("INSERT INTO public.staff_action")) {
+          actions.push({
+            id: actions.length + 1,
+            request_id: params[0],
+            request_log_id: params[1],
+            action: params[2],
+            decision: params[3],
+            reason: params[4],
+            staff_name: params[5],
+            created_at: "2026-10-30T12:00:00Z",
+          });
+        }
         if (text.includes("SELECT response FROM public.request_log")) {
           const row = stored.findLast((row) => row.request_id === params[0]);
           return Promise.resolve(row ? [{ response: row.response }] : []);
@@ -73,14 +99,25 @@ function fakeSql(results: Record<string, unknown>[][] = []) {
                 articles: response.articles,
                 needs_review: response.needs_review,
                 spe_schema: response.spe_schema ?? null,
+                last_staff_action: actions.findLast((action) =>
+                  action.request_log_id === stored.indexOf(row) + 1
+                ) ?? null,
               };
             }),
           );
         }
         return Promise.resolve([]);
       },
-      begin<T>(fn: (tx: RequestDatabase) => Promise<T>): Promise<T> {
-        return fn(sql);
+      async begin<T>(fn: (tx: RequestDatabase) => Promise<T>): Promise<T> {
+        const snapshot = structuredClone(stored);
+        const actionCount = actions.length;
+        try {
+          return await fn(sql);
+        } catch (error) {
+          stored.splice(0, stored.length, ...snapshot);
+          actions.splice(actionCount);
+          throw error;
+        }
       },
       end() {
         closed++;
@@ -90,6 +127,7 @@ function fakeSql(results: Record<string, unknown>[][] = []) {
   );
   return {
     stored,
+    actions,
     sql,
     calls,
     get closed() {
@@ -112,6 +150,245 @@ const statistical = {
 function post(body: unknown, url = base): Request {
   return new Request(url, { method: "POST", body: JSON.stringify(body) });
 }
+
+const staffReview = {
+  action: "approve",
+  request_id: "R01",
+  reason: "Staff verified the purpose.",
+  staff_name: "Reviewer",
+};
+
+async function heldRequest(
+  fake: ReturnType<typeof fakeSql>,
+  definitions = statistical.definitions,
+) {
+  const response = await createHandler(() => fake.sql)(post({
+    ...statistical,
+    purpose: "Explore possible uses.",
+    definitions,
+  }));
+  equal(response.status, 200);
+  const held = await response.json();
+  equal(held.status, "staff_review");
+  equal(held.answer, null);
+  equal(fake.calls.length, 1);
+  return held;
+}
+
+function patientResults(fake: ReturnType<typeof fakeSql>) {
+  const original = fake.sql.unsafe.bind(fake.sql);
+  fake.sql.unsafe = (text, params = []) => {
+    if (
+      text.includes("public.eligible_patients") ||
+      text.includes("FROM spe_r01.patients")
+    ) {
+      fake.calls.push({ text, params });
+      if (text.startsWith("SELECT DISTINCT")) {
+        return Promise.resolve([{ value: "Wien" }, { value: "Tirol" }]);
+      }
+      if (text.includes("AS g0")) {
+        return Promise.resolve([{ g0: "Wien", n: "25" }, {
+          g0: "Tirol",
+          n: "4",
+        }]);
+      }
+      return Promise.resolve([{ n: "42" }]);
+    }
+    return original(text, params);
+  };
+}
+
+Deno.test("review: approval executes the same protected engine and updates the staff queue", async () => {
+  const fake = fakeSql();
+  await heldRequest(fake);
+  const handler = createHandler(() => fake.sql);
+  const before = await (await handler(new Request(base))).json();
+  equal(before.requests[0].status, "staff_review");
+  equal(before.requests[0].last_staff_action, null);
+  patientResults(fake);
+  const response = await handler(post(staffReview, base + "/review"));
+  equal(response.status, 200);
+  const result = await response.json();
+  equal(result.status, "decided");
+  equal(result.needs_review, false);
+  equal(result.answer, {
+    Wien: { adults_with_type2_diabetes: 25 },
+    Tirol: { adults_with_type2_diabetes: "<10" },
+  });
+  equal(fake.stored.length, 1);
+  equal(fake.stored[0].response, result);
+  equal(await (await handler(new Request(base + "/R01"))).json(), result);
+  equal(fake.actions.length, 1);
+  equal(fake.actions[0].reason, staffReview.reason);
+  assert(
+    fake.calls.some((call) => call.text.includes("LIMIT 1 FOR UPDATE")),
+    "lock reviewed submission",
+  );
+  const after = await (await handler(new Request(base))).json();
+  equal(after.requests[0].status, "decided");
+  equal(after.requests[0].last_staff_action.staff_name, "Reviewer");
+  equal((await handler(post(staffReview, base + "/review"))).status, 409);
+  equal(fake.actions.length, 1);
+  assert(!("answer" in after.requests[0]), "queue omits statistics");
+  assert(
+    !JSON.stringify(result).includes("opted_out"),
+    "no opt-out disclosure",
+  );
+});
+
+Deno.test("review: REJECT override never reads patient data or creates an SPE", async () => {
+  const fake = fakeSql();
+  await heldRequest(fake);
+  const response = await createHandler(() => fake.sql)(post({
+    ...staffReview,
+    action: "override",
+    decision: "REJECT",
+  }, base + "/review"));
+  equal(response.status, 200);
+  const result = await response.json();
+  equal(result.decision, "REJECT");
+  equal(result.status, "decided");
+  equal(result.answer, null);
+  assert(!("population" in result) && !("spe_schema" in result), "no data");
+  assert(
+    fake.calls.every((call) =>
+      !/eligible_patients|CREATE SCHEMA/.test(call.text)
+    ),
+    "metadata only",
+  );
+  equal(fake.actions[0].decision, "REJECT");
+});
+
+Deno.test("review: approving overrides use protected statistics and SPE paths", async () => {
+  for (const decision of ["APPROVE_STATISTICAL", "APPROVE_SPE"]) {
+    const fake = fakeSql();
+    await heldRequest(fake);
+    patientResults(fake);
+    const response = await createHandler(() => fake.sql)(post({
+      ...staffReview,
+      action: "override",
+      decision,
+    }, base + "/review"));
+    equal(response.status, 200);
+    const result = await response.json();
+    equal(result.decision, decision);
+    equal(result.status, "decided");
+    if (decision === "APPROVE_SPE") {
+      equal(result.spe_schema, "spe_r01");
+      assert(
+        fake.calls.some((call) =>
+          call.text.includes("ENABLE ROW LEVEL SECURITY")
+        ),
+        "SPE retains RLS",
+      );
+      assert(
+        fake.calls.some((call) => call.text.includes("REVOKE ALL")),
+        "SPE retains access restrictions",
+      );
+    } else {
+      equal(result.answer.Tirol.adults_with_type2_diabetes, "<10");
+    }
+    assert(
+      fake.calls.some((call) => call.text.includes("public.eligible_patients")),
+      "opt-outs excluded by existing view",
+    );
+  }
+});
+
+Deno.test("review: parse failure remains held even after an approval or approving override", async () => {
+  for (const action of ["approve", "override"]) {
+    const fake = fakeSql();
+    await heldRequest(fake, []);
+    const response = await createHandler(() => fake.sql)(post({
+      ...staffReview,
+      action,
+      ...(action === "override" ? { decision: "APPROVE_SPE" } : {}),
+    }, base + "/review"));
+    equal(response.status, 200);
+    const result = await response.json();
+    equal(result.status, "staff_review");
+    equal(result.answer, null);
+    assert(result.parse_errors.length > 0, "parse error retained");
+    assert(
+      fake.calls.every((call) =>
+        !/eligible_patients|CREATE SCHEMA/.test(call.text)
+      ),
+      "no patient queries",
+    );
+    equal(fake.actions.length, 1);
+  }
+});
+
+Deno.test("review: invalid fields fail before connection; missing and already decided requests fail safely", async () => {
+  const handler = createHandler(() => {
+    throw new Error("must not connect");
+  });
+  for (
+    const body of [
+      null,
+      {},
+      { ...staffReview, reason: " " },
+      { ...staffReview, staff_name: "" },
+      { ...staffReview, action: "delete" },
+      { ...staffReview, request_id: "'" },
+      { ...staffReview, decision: "REJECT" },
+      { ...staffReview, action: "override" },
+      { ...staffReview, action: "override", decision: "IGNORE_PRIVACY" },
+      { ...staffReview, action: "override", decision: ["REJECT"] },
+    ]
+  ) {
+    equal((await handler(post(body, base + "/review"))).status, 400);
+  }
+  const fake = fakeSql();
+  const connected = createHandler(() => fake.sql);
+  equal((await connected(post(staffReview, base + "/review"))).status, 404);
+  await connected(post({ ...statistical, purpose: "insurance premiums" }));
+  equal((await connected(post(staffReview, base + "/review"))).status, 409);
+  equal(fake.actions.length, 0);
+});
+
+Deno.test("review: failed audit rolls back the response update", async () => {
+  const fake = fakeSql();
+  const held = await heldRequest(fake);
+  const original = fake.sql.unsafe.bind(fake.sql);
+  fake.sql.unsafe = (text, params) => {
+    if (text.includes("INSERT INTO public.staff_action")) {
+      throw new Error("private DB error");
+    }
+    return original(text, params);
+  };
+  const response = await createHandler(() => fake.sql)(post({
+    ...staffReview,
+    action: "override",
+    decision: "REJECT",
+  }, base + "/review"));
+  equal(response.status, 500);
+  equal(await response.json(), { error: "internal server error" });
+  equal(fake.stored[0].response, held);
+  equal(fake.actions.length, 0);
+});
+
+Deno.test("review: duplicate ids review only the latest saved submission", async () => {
+  const fake = fakeSql();
+  await heldRequest(fake);
+  const handler = createHandler(() => fake.sql);
+  await handler(post({ ...statistical, purpose: "Explore possible uses." }));
+  equal(
+    (await handler(
+      post(
+        { ...staffReview, action: "override", decision: "REJECT" },
+        base + "/review",
+      ),
+    )).status,
+    200,
+  );
+  equal(
+    (fake.stored[0].response as Record<string, unknown>).status,
+    "staff_review",
+  );
+  equal((fake.stored[1].response as Record<string, unknown>).status, "decided");
+  equal(fake.actions[0].request_log_id, 2);
+});
 
 Deno.test("requests: CORS preflight and unsupported methods never connect", async () => {
   const handler = createHandler(() => {
@@ -180,7 +457,10 @@ Deno.test("requests: POST runs real statistical pipeline, saves full JSON, only 
   const result = await response.json();
   equal(result.decision, "APPROVE_STATISTICAL");
   equal(result.request_id, "R01");
-  equal(result.answer, { Wien: { adults_with_type2_diabetes: 25 }, Tirol: { adults_with_type2_diabetes: "<10" } });
+  equal(result.answer, {
+    Wien: { adults_with_type2_diabetes: 25 },
+    Tirol: { adults_with_type2_diabetes: "<10" },
+  });
   assert(
     Array.isArray(result.articles) && typeof result.reason === "string",
     "decision envelope required",
@@ -302,8 +582,15 @@ Deno.test("requests: overview selects and projects only safe fields for every hi
   const response = await createHandler(() => fake.sql)(new Request(base));
   equal(response.status, 200);
   equal(await response.json(), {
-    requests: [{ ...common, spe_schema: null }, {
+    requests: [{
       ...common,
+      status: "decided",
+      last_staff_action: null,
+      spe_schema: null,
+    }, {
+      ...common,
+      status: "decided",
+      last_staff_action: null,
       spe_schema: "spe_r01",
     }],
     downloads: [{ request_id: "R05", attempted_at: "2026-10-29T13:00:00Z" }],
@@ -495,6 +782,8 @@ Deno.test("request log: existing JSON string rows load as objects and populate o
     decision: "APPROVE_SPE",
     articles: response.articles,
     needs_review: false,
+    status: "decided",
+    last_staff_action: null,
     spe_schema: "spe_r05",
   }]);
   assert(

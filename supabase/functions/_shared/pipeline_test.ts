@@ -12,6 +12,49 @@
 
 import { answerRequest, type SqlClient } from "./pipeline.ts";
 
+Deno.test("flagged statistical and SPE requests hold all data until staff review", async () => {
+  for (const template of [STAT_REQUEST, SPE_REQUEST]) {
+    const sql = makeFakeSql();
+    const response = await answerRequest({
+      ...template,
+      purpose: "Explore possible uses.",
+      question: template === SPE_REQUEST
+        ? "Aggregates are not enough."
+        : "How many adults?",
+    }, sql);
+    assert(response.needs_review);
+    assert(response.status === "staff_review");
+    assert(response.answer === null);
+    assert(!("population" in response));
+    assert(!("spe_schema" in response));
+    assert(response.explanation !== undefined);
+    assert(sql.calls === 0);
+  }
+});
+
+Deno.test("staff approval cannot execute an unreadable definition", async () => {
+  const sql = makeFakeSql();
+  const response = await answerRequest(PARSE_FAIL_REQUEST, sql, {
+    reason: "Reviewed",
+  });
+  assert(response.needs_review && response.status === "staff_review");
+  assert(response.answer === null && !!response.parse_errors?.length);
+  assert(sql.calls === 0);
+});
+
+Deno.test("applicant JSON cannot force off review or override the decision", async () => {
+  const sql = makeFakeSql();
+  const response = await answerRequest({
+    ...STAT_REQUEST,
+    purpose: "Explore possible uses.",
+    needs_review: false,
+    review: { reason: "Approved" },
+    decision: "APPROVE_SPE",
+  }, sql);
+  assert(response.status === "staff_review" && response.answer === null);
+  assert(sql.calls === 0);
+});
+
 function assert(ok: boolean, message = "Assertion failed"): asserts ok {
   if (!ok) throw new Error(message);
 }
@@ -125,7 +168,10 @@ Deno.test("parse failure: needs_review is true, answer is null, parse_errors pre
     `expected APPROVE_STATISTICAL, got ${resp.decision}`,
   );
   assert(resp.answer === null, "answer must be null when parse fails");
-  assert(resp.needs_review === true, "needs_review must be true when parse fails");
+  assert(
+    resp.needs_review === true,
+    "needs_review must be true when parse fails",
+  );
   assert(
     Array.isArray(resp.parse_errors) && resp.parse_errors.length > 0,
     "parse_errors must be a non-empty array",
@@ -156,16 +202,25 @@ Deno.test("APPROVE_STATISTICAL: runPlan is called, answer returned", async () =>
   );
   assert(resp.answer !== null, "answer must not be null");
   assert(sql.calls > 0, "sql must have been called");
-  assert(!("spe_schema" in resp), "spe_schema must not be present for STATISTICAL");
+  assert(
+    !("spe_schema" in resp),
+    "spe_schema must not be present for STATISTICAL",
+  );
   assert(
     !Array.isArray(resp.parse_errors),
     "parse_errors must not be present on success",
   );
   // population has eligible_patients only — no opt-out count
-  const pop = (resp as unknown as Record<string, unknown>).population as Record<string, unknown>;
+  const pop = (resp as unknown as Record<string, unknown>).population as Record<
+    string,
+    unknown
+  >;
   assert(typeof pop === "object", "population must be present");
   assert("eligible_patients" in pop, "population must have eligible_patients");
-  assert(!("opted_out_excluded" in pop), "population must NOT have opted_out_excluded");
+  assert(
+    !("opted_out_excluded" in pop),
+    "population must NOT have opted_out_excluded",
+  );
   assert(!("total_patients" in pop), "population must NOT have total_patients");
   // No opt-out key anywhere in the response
   assert(
@@ -182,7 +237,10 @@ Deno.test("APPROVE_SPE: createSpe is called, cohort_size and spe_schema returned
   // ALTER TABLE (RLS), REVOKE, GRANT (for patients), then per-record-table (conditions):
   // CREATE, ALTER, REVOKE, GRANT (4 stmts), then a COUNT query outside the transaction.
   // The fake sql returns [] for all DDL, [{n:"42"}] for the COUNT, then eligible_patients.
-  const ddlRows: Record<string, unknown>[][] = Array.from({ length: 20 }, () => []);
+  const ddlRows: Record<string, unknown>[][] = Array.from(
+    { length: 20 },
+    () => [],
+  );
   // createSpe COUNT query → cohort size
   ddlRows.push([{ n: "42" }]);
   // pipeline population query: eligible_patients count
@@ -208,10 +266,16 @@ Deno.test("APPROVE_SPE: createSpe is called, cohort_size and spe_schema returned
     "parse_errors must not be present on success",
   );
   // population has eligible_patients only — no opt-out count
-  const pop = (resp as unknown as Record<string, unknown>).population as Record<string, unknown>;
+  const pop = (resp as unknown as Record<string, unknown>).population as Record<
+    string,
+    unknown
+  >;
   assert(typeof pop === "object", "population must be present");
   assert("eligible_patients" in pop, "population must have eligible_patients");
-  assert(!("opted_out_excluded" in pop), "population must NOT have opted_out_excluded");
+  assert(
+    !("opted_out_excluded" in pop),
+    "population must NOT have opted_out_excluded",
+  );
   // No opt-out key anywhere in the response
   assert(
     !/"opt.?out"/i.test(JSON.stringify(resp)),
@@ -244,8 +308,11 @@ Deno.test("no response contains a key matching /opt.?out/i", async () => {
   );
 
   // APPROVE_SPE
-  const speDdl: Record<string, unknown>[][] = Array.from({ length: 20 }, () => []);
-  speDdl.push([{ n: "7" }]);   // cohort count
+  const speDdl: Record<string, unknown>[][] = Array.from(
+    { length: 20 },
+    () => [],
+  );
+  speDdl.push([{ n: "7" }]); // cohort count
   speDdl.push([{ n: "500" }]); // eligible_patients
   const speSql = makeFakeSql(speDdl);
   const spe = await answerRequest(SPE_REQUEST, speSql);

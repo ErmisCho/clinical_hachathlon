@@ -10,6 +10,7 @@ import {
   type RequestLogSql,
   saveRequest,
 } from "../_shared/request_log.ts";
+import { ReviewError, reviewRequest, validReview } from "./review.ts";
 
 export type RequestDatabase = SqlClient & RequestLogSql & {
   end(): Promise<void>;
@@ -41,7 +42,8 @@ export function createHandler(connect: () => RequestDatabase) {
     const url = new URL(req.url);
     const path = url.pathname.match(/\/requests(?:\/([^/]+))?\/?$/);
     if (!path) return json({ error: "not found" }, 404);
-    if (req.method === "POST" && path[1]) {
+    const isReview = req.method === "POST" && path[1] === "review";
+    if (req.method === "POST" && path[1] && !isReview) {
       return json({ error: "method not allowed" }, 405);
     }
 
@@ -66,7 +68,9 @@ export function createHandler(connect: () => RequestDatabase) {
     if (req.method === "POST") {
       try {
         const value = await readRequestJson(req);
-        const problems = validateRequest(value);
+        const problems = isReview
+          ? validReview(value) ? [] : ["invalid staff review fields"]
+          : validateRequest(value);
         if (problems.length) {
           return json({ error: "invalid request", problems }, 400);
         }
@@ -81,6 +85,12 @@ export function createHandler(connect: () => RequestDatabase) {
     let sql: RequestDatabase | undefined;
     try {
       sql = connect();
+      if (isReview && validReview(body)) {
+        const response = await sql.begin((tx) =>
+          reviewRequest(tx as RequestDatabase, body)
+        );
+        return json(response);
+      }
       if (body) {
         const response = await answerRequest(body, sql);
         await saveRequest(sql, body, response);
@@ -105,6 +115,8 @@ export function createHandler(connect: () => RequestDatabase) {
           decision: row.decision,
           articles: row.articles,
           needs_review: row.needs_review,
+          status: row.needs_review ? "staff_review" : "decided",
+          last_staff_action: row.last_staff_action ?? null,
           spe_schema: row.spe_schema ?? null,
         })),
         downloads: downloads.map((row) => ({
@@ -112,7 +124,10 @@ export function createHandler(connect: () => RequestDatabase) {
           attempted_at: row.attempted_at,
         })),
       });
-    } catch {
+    } catch (error) {
+      if (error instanceof ReviewError) {
+        return json({ error: error.message }, error.status);
+      }
       return json({ error: "internal server error" }, 500);
     } finally {
       try {

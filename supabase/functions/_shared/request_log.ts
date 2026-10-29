@@ -49,7 +49,15 @@ export function listRequests(sql: RequestLogSql) {
             result->>'decision' AS decision,
             result->'articles' AS articles,
             result->'needs_review' AS needs_review,
-            result->>'spe_schema' AS spe_schema
+            result->>'spe_schema' AS spe_schema,
+            CASE WHEN result->'needs_review' = 'true'::jsonb
+                 THEN 'staff_review' ELSE 'decided' END AS status,
+            (SELECT jsonb_build_object(
+               'id', a.id, 'request_id', a.request_id, 'action', a.action,
+               'decision', a.decision, 'reason', a.reason,
+               'staff_name', a.staff_name, 'created_at', a.created_at)
+             FROM public.staff_action a WHERE a.request_log_id = history.id
+             ORDER BY a.created_at DESC, a.id DESC LIMIT 1) AS last_staff_action
      FROM (
        SELECT id, request_id, submitted_at,
               CASE WHEN jsonb_typeof(response) = 'string'

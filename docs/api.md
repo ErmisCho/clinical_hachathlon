@@ -17,15 +17,17 @@ these CORS headers.
 
 Lovable: `supabase.functions.invoke("requests", { body })`. Runs
 `answerRequest(body, sql)` synchronously: decision first (rejections never query
-patient data), then parsing, then aggregate execution or SPE creation. Saves the
+patient data), then a review hold, then parsing and aggregate execution or SPE creation. Saves the
 complete submitted JSON and pipeline response in `public.request_log` before
 returning HTTP 200. Every successful submission creates a new row, even when the
 request id has been submitted before. Invalid HTTP input is not saved; execution
 or persistence failure returns HTTP 500 without a successful result.
 
 The body must be a JSON object with nonempty string fields `id`, `requested_as`,
-and `purpose`. If provided, `question` must be a string and `definitions` must
-be an array of strings. Other metadata is preserved but not validated by the
+`purpose`, and `question`, plus `definitions` as an array of strings. IDs contain
+1–59 ASCII letters, digits or underscores. Text fields are limited to 8000
+characters, definitions to 50 entries of at most 2000 characters, and the body
+to 64 KB. Other metadata is preserved but not validated by the
 HTTP handler. The pipeline interprets `requested_as` (`health data request` or
 `health data access application`) and the purpose. Missing or unsupported query
 definitions produce a saved review result with `parse_errors`, not HTTP 400.
@@ -60,12 +62,13 @@ The response is the complete pipeline result:
 | `articles`           | Array of article number strings                                                                          |
 | `reason`             | Explanation string                                                                                       |
 | `needs_review`       | Boolean; also true for parse failures                                                                    |
-| `answer`             | Aggregate object, SPE `{ "cohort_size": number }`, or `null` for rejection/parse failure                 |
+| `status`             | `staff_review` when held; otherwise `decided` |
+| `answer`             | Aggregate object, SPE `{ "cohort_size": number }`, or `null` for rejection or any review hold                 |
 | `spe_schema`         | Present only for successful SPE creation, e.g. `spe_r05`                                                 |
 | `parse_errors`       | Present for parse failure: array of `{ "definition": string, "reason": string }`                         |
 | `explanation`        | Present when quote verification passes (see below); omitted otherwise                                   |
 | `explanation_error`  | Present when explanation could not be verified; omitted otherwise                                        |
-| `population`         | Present for non-REJECT responses with a valid plan: `{ "eligible_patients": number }` — count from the `eligible_patients` view (opted-out rows already excluded) |
+| `population`         | Present only after successful execution: `{ "eligible_patients": number }` — count from the `eligible_patients` view (opted-out rows already excluded) |
 
 The `explanation` object provides plain-language reasoning and verbatim regulation quotes:
 
@@ -88,6 +91,7 @@ Example statistical result (values illustrative):
   "articles": ["53", "69"],
   "reason": "Your purpose is an allowed use of health data (Art. 53). Anonymised statistics are sufficient to answer the question (Art. 69).",
   "needs_review": false,
+  "status": "decided",
   "answer": {
     "Wien": { "cohort": 263 },
     "Tirol": { "cohort": "<10" }
@@ -123,6 +127,51 @@ included. SPE responses contain only the cohort size and schema name, never
 patient records. Rejection is an HTTP 200 result with `decision: "REJECT"` and
 `answer: null`.
 
+Whenever `needs_review` is true (including unclear purposes and unreadable
+definitions), `status` is `staff_review`, `answer` is null, and neither
+`population` nor `spe_schema` is returned. No engine queries or SPE creation run.
+Decision, reason, articles and verified explanation remain available. Applicant
+fields such as `needs_review`, `decision` or `review` cannot bypass the hold.
+
+## `POST /requests/review`
+
+Staff reviews the latest saved submission for `request_id`:
+
+```json
+{
+  "action": "approve",
+  "request_id": "R01",
+  "reason": "The applicant clarified the public health research purpose.",
+  "staff_name": "Demo reviewer"
+}
+```
+
+`action` is `approve` or `override`. Both require `request_id`, nonblank `reason`
+and `staff_name` (at most 8000 characters each). `approve` accepts no `decision`;
+it retains the pipeline decision and clears the purpose review flag. It requires
+a held, non-REJECT request, otherwise HTTP 409. `override` requires `decision`
+as `REJECT`, `APPROVE_STATISTICAL` or `APPROVE_SPE` and can change a decided request.
+Unknown ids return HTTP 404; invalid review fields return HTTP 400.
+
+Approvals rerun the saved request through the same parser and execution pipeline,
+with purpose review forced off by a server-only argument. Small-cell suppression,
+opt-out exclusion and SPE restrictions remain unchanged; download attempts remain
+blocked. Unreadable definitions still return `staff_review`, `answer: null` and
+`parse_errors`; staff must obtain a corrected submission. A REJECT override
+stores a rejection without reading patient data or creating an SPE.
+
+The endpoint returns the updated pipeline response. A transaction locks the
+latest submission, updates its response in place (preserving `submitted_at` and
+the original request), and inserts a `public.staff_action` audit row with action,
+effective decision, reason, staff name and server timestamp. It links to the exact
+request-log row so repeated ids have separate review histories. Execution or save
+failure rolls back the review. Review attempts that remain held are also recorded.
+Subsequent GET lookups return the updated response.
+
+The demo uses the same applicant/staff UI switch and function key described
+above; `staff_name` is a supplied audit label, not an authenticated identity.
+The audit table has RLS enabled and no anon/authenticated table access.
+
 ## `GET /requests?id=R01` or `GET /requests/R01`
 
 Returns the latest saved pipeline response for the request id, with the same
@@ -150,6 +199,8 @@ once per saved submission.
       "decision": "APPROVE_SPE",
       "articles": ["53", "66", "68", "73"],
       "needs_review": false,
+      "status": "decided",
+      "last_staff_action": null,
       "spe_schema": "spe_r05"
     },
     {
@@ -158,6 +209,8 @@ once per saved submission.
       "decision": "APPROVE_STATISTICAL",
       "articles": ["53", "69"],
       "needs_review": false,
+      "status": "decided",
+      "last_staff_action": null,
       "spe_schema": null
     }
   ],
@@ -174,6 +227,11 @@ once per saved submission.
 `submitted` metadata. `spe_schema` is null when absent. Empty history returns
 `{ "requests": [], "downloads": [] }`. The overview never contains answers,
 request bodies, applicant metadata, patient data, or download user agents.
+Each row includes `status` (`staff_review` or `decided`) and `last_staff_action`
+(null or `{ id, request_id, action, decision, reason, staff_name, created_at }`).
+The action is the latest for that exact submission, ordered by `created_at`, then
+audit id descending. Staff can filter `status: "staff_review"` for their queue.
+Legacy saved responses without status are classified using `needs_review`.
 
 ## Errors from `requests`
 
@@ -182,6 +240,7 @@ request bodies, applicant metadata, patient data, or download user agents.
 | 400    | Malformed JSON, non-object body, missing/invalid required string, invalid question/definitions, or invalid lookup id |
 | 404    | Unknown route or no saved result for the id                                                                          |
 | 405    | Unsupported HTTP method, or POST to a result-id path                                                                 |
+| 409    | Approval of a request that is not awaiting approval; use an explicit override to change a decision |
 | 500    | Database connection, pipeline, or history read/write failure                                                         |
 
 Errors use `{ "error": "message" }`. Internal failures always return
