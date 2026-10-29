@@ -1,0 +1,517 @@
+import { loadRequest, saveRequest } from "./request_log.ts";
+import type { PipelineResponse } from "./pipeline.ts";
+import { REQUEST_FIXTURES } from "./parser_fixtures.ts";
+import { createHandler, type RequestDatabase } from "../requests/handler.ts";
+
+function equal(actual: unknown, expected: unknown): void {
+  if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+    throw new Error(
+      `Expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`,
+    );
+  }
+}
+function assert(value: unknown, message: string): asserts value {
+  if (!value) throw new Error(message);
+}
+
+class JsonParameter {
+  constructor(readonly value: unknown) {}
+}
+
+function fakeSql(results: Record<string, unknown>[][] = []) {
+  const calls: { text: string; params: unknown[] }[] = [];
+  let closed = 0;
+  const stored: { request_id: unknown; request: unknown; response: unknown }[] =
+    [];
+  const sql: RequestDatabase = Object.assign(
+    (strings: TemplateStringsArray, ...values: unknown[]) =>
+      sql.unsafe(
+        strings.join("?"),
+        values.map((value) =>
+          value instanceof JsonParameter ? value.value : value
+        ) as (string | number | boolean)[],
+      ),
+    {
+      json(value: unknown) {
+        return new JsonParameter(value);
+      },
+      unsafe(text: string, params: (string | number | boolean)[] = []) {
+        calls.push({ text, params });
+        if (text.includes("INSERT INTO public.request_log")) {
+          // postgres.js JSONB serialization happens for both objects and strings.
+          // JSON.stringify supplied by the caller would persist a JSON string.
+          stored.push({
+            request_id: params[0],
+            request: JSON.parse(JSON.stringify(params[1])),
+            response: JSON.parse(JSON.stringify(params[2])),
+          });
+        }
+        if (results.length) return Promise.resolve(results.shift()!);
+        if (text.includes("SELECT response FROM public.request_log")) {
+          const row = stored.findLast((row) => row.request_id === params[0]);
+          return Promise.resolve(row ? [{ response: row.response }] : []);
+        }
+        if (text.includes("AS history")) {
+          assert(
+            text.includes("jsonb_typeof(response) = 'string'"),
+            "normalize legacy rows before projection",
+          );
+          assert(
+            text.includes("(response #>> '{}')::jsonb"),
+            "decode legacy JSON string",
+          );
+          return Promise.resolve(
+            stored.toReversed().map((row) => {
+              const result = typeof row.response === "string"
+                ? JSON.parse(row.response)
+                : row.response;
+              const response = result as Record<string, unknown>;
+              return {
+                request_id: row.request_id,
+                submitted_at: "2026-10-29T12:00:00Z",
+                decision: response.decision,
+                articles: response.articles,
+                needs_review: response.needs_review,
+                spe_schema: response.spe_schema ?? null,
+              };
+            }),
+          );
+        }
+        return Promise.resolve([]);
+      },
+      begin<T>(fn: (tx: RequestDatabase) => Promise<T>): Promise<T> {
+        return fn(sql);
+      },
+      end() {
+        closed++;
+        return Promise.resolve();
+      },
+    },
+  );
+  return {
+    stored,
+    sql,
+    calls,
+    get closed() {
+      return closed;
+    },
+  };
+}
+const base = "https://example.test/functions/v1/requests";
+const statistical = {
+  id: "R01",
+  requested_as: "health data request",
+  purpose: "Public health research",
+  question: "How many adults have diabetes?",
+  definitions: [
+    "Adult = aged 18 or older on 31 December 2025.",
+    "Type 2 diabetes = any condition with an ICD-10 code starting with E11.",
+    "Report per region: adults with type 2 diabetes.",
+  ],
+};
+function post(body: unknown, url = base): Request {
+  return new Request(url, { method: "POST", body: JSON.stringify(body) });
+}
+
+Deno.test("requests: CORS preflight and unsupported methods never connect", async () => {
+  const handler = createHandler(() => {
+    throw new Error("must not connect");
+  });
+  for (const method of ["OPTIONS", "PUT", "DELETE", "PATCH"]) {
+    const response = await handler(
+      new Request(base, {
+        method,
+        headers: { Origin: "https://health-data-access-compass.lovable.app" },
+      }),
+    );
+    equal(response.status, method === "OPTIONS" ? 204 : 405);
+    equal(response.headers.get("Access-Control-Allow-Origin"), "*");
+    equal(
+      response.headers.get("Access-Control-Allow-Methods"),
+      "GET, POST, OPTIONS",
+    );
+    equal(
+      response.headers.get("Access-Control-Allow-Headers"),
+      "authorization, x-client-info, apikey, content-type",
+    );
+    if (method === "OPTIONS") equal(await response.text(), "");
+    else equal(await response.json(), { error: "method not allowed" });
+  }
+});
+
+Deno.test("requests: malformed bodies return JSON 400 before connecting", async () => {
+  const handler = createHandler(() => {
+    throw new Error("must not connect");
+  });
+  const bodies = [
+    null,
+    [],
+    "text",
+    {},
+    { ...statistical, id: " " },
+    { ...statistical, requested_as: 1 },
+    { ...statistical, purpose: null },
+    { ...statistical, question: {} },
+    { ...statistical, definitions: [1] },
+  ];
+  for (const body of bodies) {
+    const response = await handler(post(body));
+    equal(response.status, 400);
+    assert(
+      typeof (await response.json()).error === "string",
+      "JSON error required",
+    );
+    equal(response.headers.get("Access-Control-Allow-Origin"), "*");
+  }
+  equal(
+    (await handler(new Request(base, { method: "POST", body: "{" }))).status,
+    400,
+  );
+});
+
+Deno.test("requests: POST runs real statistical pipeline, saves full JSON, only returns aggregates", async () => {
+  // Extra patient fields in a DB row must never be passed through by the engine.
+  const fake = fakeSql([
+    [{ value: "Wien" }, { value: "Tirol" }],
+    [{ g0: "Wien", n: "25", patient_id: "secret", birth_date: "secret" }],
+  ]);
+  const response = await createHandler(() => fake.sql)(post(statistical));
+  equal(response.status, 200);
+  const result = await response.json();
+  equal(result.decision, "APPROVE_STATISTICAL");
+  equal(result.request_id, "R01");
+  equal(result.answer, { Wien: { cohort: 25 }, Tirol: { cohort: "<10" } });
+  assert(
+    Array.isArray(result.articles) && typeof result.reason === "string",
+    "decision envelope required",
+  );
+  equal(result.needs_review, false);
+  const insert = fake.calls.at(-1)!;
+  assert(
+    insert.text.includes("INSERT INTO public.request_log"),
+    "must save result",
+  );
+  equal(insert.params, [
+    "R01",
+    statistical,
+    result,
+  ]);
+  assert(
+    !JSON.stringify(result).includes("secret"),
+    "no patient fields in response",
+  );
+  equal(fake.closed, 1);
+});
+
+Deno.test("requests: rejected requests are saved without querying patient data", async () => {
+  const fake = fakeSql();
+  const response = await createHandler(() => fake.sql)(post({
+    ...statistical,
+    id: "R02",
+    purpose: "Set insurance premiums",
+  }));
+  equal(response.status, 200);
+  const result = await response.json();
+  equal(result.decision, "REJECT");
+  equal(result.answer, null);
+  equal(fake.calls.length, 1);
+  assert(
+    fake.calls[0].text.includes("INSERT INTO public.request_log"),
+    "only history insert allowed",
+  );
+});
+
+Deno.test("requests: parse failures are saved as review results", async () => {
+  const fake = fakeSql();
+  const response = await createHandler(() => fake.sql)(
+    post({ ...statistical, definitions: [] }),
+  );
+  equal(response.status, 200);
+  const result = await response.json();
+  equal(result.needs_review, true);
+  equal(result.answer, null);
+  assert(result.parse_errors.length > 0, "parse errors returned");
+  equal(fake.calls.length, 1);
+  equal(fake.calls[0].params[2], result);
+});
+
+Deno.test("requests: lookup supports query and decoded path ids with deterministic latest ordering", async () => {
+  const saved = {
+    request_id: "R01",
+    decision: "REJECT",
+    articles: ["54"],
+    reason: "prohibited",
+    needs_review: false,
+    answer: null,
+  };
+  for (
+    const url of [
+      base + "?id=R01",
+      base + "/R01",
+      base + "/R%30%31/",
+      base + "/R02?id=R01",
+    ]
+  ) {
+    const fake = fakeSql([[{ response: saved }]]);
+    const response = await createHandler(() => fake.sql)(new Request(url));
+    equal(response.status, 200);
+    equal(await response.json(), saved);
+    equal(fake.calls[0].params, ["R01"]);
+    assert(
+      fake.calls[0].text.includes(
+        "ORDER BY submitted_at DESC, id DESC LIMIT 1",
+      ),
+      "latest duplicate id must win",
+    );
+    equal(fake.closed, 1);
+  }
+});
+
+Deno.test("requests: lookup binds ids as values", async () => {
+  const fake = fakeSql();
+  const id = "R01' OR 1=1 --";
+  const response = await createHandler(() => fake.sql)(
+    new Request(base + "?id=" + encodeURIComponent(id)),
+  );
+  equal(response.status, 404);
+  equal(await response.json(), { error: "request not found" });
+  equal(fake.calls[0].params, [id]);
+  assert(!fake.calls[0].text.includes(id), "id must not be interpolated");
+});
+
+Deno.test("requests: overview selects and projects only safe fields for every history row", async () => {
+  const common = {
+    request_id: "R01",
+    submitted_at: "2026-10-29T12:00:00Z",
+    decision: "APPROVE_STATISTICAL",
+    articles: ["53", "69"],
+    needs_review: false,
+  };
+  const fake = fakeSql([
+    [{ ...common, answer: { patient_id: "secret" }, request: statistical }, {
+      ...common,
+      spe_schema: "spe_r01",
+    }],
+    [{
+      request_id: "R05",
+      attempted_at: "2026-10-29T13:00:00Z",
+      user_agent: "secret",
+      schema: "secret",
+    }],
+  ]);
+  const response = await createHandler(() => fake.sql)(new Request(base));
+  equal(response.status, 200);
+  equal(await response.json(), {
+    requests: [{ ...common, spe_schema: null }, {
+      ...common,
+      spe_schema: "spe_r01",
+    }],
+    downloads: [{ request_id: "R05", attempted_at: "2026-10-29T13:00:00Z" }],
+  });
+  assert(
+    !fake.calls[0].text.includes("SELECT *"),
+    "explicit projection required",
+  );
+  assert(
+    fake.calls[0].text.includes("ORDER BY submitted_at DESC, id DESC"),
+    "newest requests first",
+  );
+  assert(
+    fake.calls[1].text.includes("ORDER BY attempted_at DESC, id DESC"),
+    "newest downloads first",
+  );
+  equal(fake.closed, 1);
+});
+
+Deno.test("requests: empty overview includes both lists", async () => {
+  const fake = fakeSql();
+  equal(
+    await (await createHandler(() => fake.sql)(new Request(base + "/"))).json(),
+    { requests: [], downloads: [] },
+  );
+});
+
+Deno.test("requests: empty and malformed ids, unknown paths, POST result paths", async () => {
+  const handler = createHandler(() => {
+    throw new Error("must not connect");
+  });
+  for (const url of [base + "?id=", base + "?id=%20", base + "/%ZZ"]) {
+    equal((await handler(new Request(url))).status, 400);
+  }
+  equal((await handler(new Request(base + "/R01/extra"))).status, 404);
+  equal((await handler(post(statistical, base + "/R01"))).status, 405);
+});
+
+Deno.test("requests: connection and query failures are sanitized JSON 500s", async () => {
+  const secret = "password and stack trace";
+  const fake = fakeSql();
+  fake.sql.unsafe = () => {
+    throw new Error(secret);
+  };
+  const factories = [() => {
+    throw new Error(secret);
+  }, () => fake.sql];
+  for (const connect of factories) {
+    for (
+      const request of [
+        new Request(base),
+        new Request(base + "?id=R01"),
+        post(statistical),
+      ]
+    ) {
+      const response = await createHandler(connect)(request);
+      equal(response.status, 500);
+      equal(await response.json(), { error: "internal server error" });
+      equal(response.headers.get("Access-Control-Allow-Origin"), "*");
+    }
+  }
+  equal(fake.closed, 3);
+});
+
+Deno.test("requests: failed history insertion never reports successful submission", async () => {
+  const fake = fakeSql();
+  fake.sql.unsafe = () => {
+    throw new Error("insert failed");
+  };
+  const response = await createHandler(() => fake.sql)(
+    post({ ...statistical, purpose: "insurance premiums" }),
+  );
+  equal(response.status, 500);
+  equal(fake.closed, 1);
+});
+
+Deno.test("requests: cleanup failure preserves saved response", async () => {
+  const fake = fakeSql();
+  fake.sql.end = () => Promise.reject(new Error("private connection details"));
+  const response = await createHandler(() => fake.sql)(new Request(base));
+  equal(response.status, 200);
+  equal(await response.json(), { requests: [], downloads: [] });
+});
+
+Deno.test("requests: SPE result saves only cohort size and schema, never record rows", async () => {
+  const fake = fakeSql();
+  fake.sql.unsafe = (text, params = []) => {
+    fake.calls.push({ text, params });
+    return Promise.resolve(
+      text.includes("SELECT COUNT(*)::text AS n")
+        ? [{ n: "42", patient_id: "secret" }]
+        : [],
+    );
+  };
+  const response = await createHandler(() => fake.sql)(
+    post(REQUEST_FIXTURES.find((request) => request.id === "R05")),
+  );
+  equal(response.status, 200);
+  const result = await response.json();
+  equal(result.decision, "APPROVE_SPE");
+  equal(result.answer, { cohort_size: 42 });
+  equal(result.spe_schema, "spe_r05");
+  equal(fake.calls.at(-1)!.params[2], result);
+  assert(
+    !JSON.stringify(result).includes("secret"),
+    "no patient records returned",
+  );
+  equal(fake.closed, 1);
+});
+
+Deno.test("requests: resubmissions append history instead of updating or upserting", async () => {
+  const fake = fakeSql();
+  const handler = createHandler(() => fake.sql);
+  for (const purpose of ["insurance premiums", "advertising"]) {
+    equal((await handler(post({ ...statistical, purpose }))).status, 200);
+  }
+  equal(fake.calls.length, 2);
+  for (const call of fake.calls) {
+    assert(
+      call.text.includes("INSERT INTO public.request_log"),
+      "append submission",
+    );
+    assert(!call.text.includes("ON CONFLICT"), "preserve repeated ids");
+    equal(call.params[0], "R01");
+  }
+});
+
+Deno.test("request log: postgres.js JSONB save/load round trip stores objects", async () => {
+  const fake = fakeSql();
+  const request = {
+    ...statistical,
+    applicant: { name: 'Dr. "Example"', country: "AT" },
+  };
+  const response: PipelineResponse = {
+    request_id: "R01",
+    decision: "APPROVE_STATISTICAL",
+    articles: ["53", "69"],
+    reason: "Research",
+    needs_review: false,
+    answer: { Wien: { cohort: 25 }, Tirol: { cohort: "<10" } },
+  };
+  await saveRequest(fake.sql, request, response);
+  equal(fake.stored.length, 1);
+  equal(typeof fake.stored[0].request, "object");
+  equal(typeof fake.stored[0].response, "object");
+  equal(fake.stored[0].request, request);
+  equal(fake.stored[0].response, response);
+  equal(await loadRequest(fake.sql, "R01"), response);
+  const result = await createHandler(() => fake.sql)(
+    new Request(base + "?id=R01"),
+  );
+  equal(result.status, 200);
+  equal(await result.json(), response);
+  const overview =
+    await (await createHandler(() => fake.sql)(new Request(base))).json();
+  equal(overview.requests[0].decision, response.decision);
+  equal(overview.requests[0].articles, response.articles);
+  equal(overview.requests[0].needs_review, false);
+  assert(!("answer" in overview.requests[0]), "overview must omit answers");
+});
+
+Deno.test("request log: existing JSON string rows load as objects and populate overview", async () => {
+  const response = {
+    request_id: "R05",
+    decision: "APPROVE_SPE",
+    articles: ["53", "66", "68", "73"],
+    reason: "Research",
+    needs_review: false,
+    spe_schema: "spe_r05",
+    answer: { cohort_size: 42 },
+  };
+  const fake = fakeSql();
+  fake.stored.push({
+    request_id: "R05",
+    request: JSON.stringify(statistical),
+    response: JSON.stringify(response),
+  });
+  equal(await loadRequest(fake.sql, "R05"), response);
+  const handler = createHandler(() => fake.sql);
+  for (const url of [base + "?id=R05", base + "/R05"]) {
+    const result = await handler(new Request(url));
+    equal(result.status, 200);
+    equal(await result.json(), response);
+  }
+  const overview = await (await handler(new Request(base))).json();
+  equal(overview.requests, [{
+    request_id: "R05",
+    submitted_at: "2026-10-29T12:00:00Z",
+    decision: "APPROVE_SPE",
+    articles: response.articles,
+    needs_review: false,
+    spe_schema: "spe_r05",
+  }]);
+  assert(
+    !JSON.stringify(overview).includes("cohort_size"),
+    "overview must omit answers",
+  );
+});
+
+Deno.test("request log: JSONB fake distinguishes an encoded string from an object", async () => {
+  const fake = fakeSql();
+  const value = { request_id: "R01", decision: "REJECT" };
+  // Reproduce the old bug: a serialized string passed to a JSONB parameter.
+  await fake.sql.unsafe(
+    "INSERT INTO public.request_log VALUES ($1, $2::jsonb, $3::jsonb)",
+    ["R01", JSON.stringify(statistical), JSON.stringify(value)],
+  );
+  equal(typeof fake.stored[0].request, "string");
+  equal(typeof fake.stored[0].response, "string");
+  equal(await loadRequest(fake.sql, "R01"), value);
+});
