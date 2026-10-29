@@ -44,3 +44,22 @@ The view uses invoker security; all five tables have RLS enabled and no browser
 policies. Both `anon` and `authenticated` have their privileges revoked on all five
 tables and the view. Only trusted backend database access should query these data.
 Deno tests use local imports and require no network or data access.
+
+## Eval
+
+From the repository root, with `../TRACK-3-ehds/requests` available:
+
+```sh
+deno run --allow-read --allow-net scripts/eval.ts --target https://YOUR_PROJECT.supabase.co/functions/v1 --key YOUR_ANON_KEY
+deno run --allow-read scripts/eval.ts --responses ./saved-responses
+```
+
+`--key` is optional and sets both Authorization (Bearer) and apikey headers.
+Saved files are `R01.json` through `R10.json`, each containing an API response
+or an array of three responses to check independent runs. Single responses are
+read three times and cannot establish live backend consistency. The evaluator
+scores all three runs, prints decision/article and number matches, privacy leaks,
+inconsistent requests and the slowest run, and exits non-zero on any failure.
+Offline timing measures file reading, not app latency. Privacy checks detect
+exposed patient fields/IDs, small counts and missing suppression; aggregate-only
+answers cannot prove that opted-out patients were excluded from source queries.
