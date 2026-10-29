@@ -217,7 +217,13 @@ export async function createSpe(
   const tables = plannedTables(plan);
   const cohort = buildCohortSql(plan);
 
-  await sql.begin(async (tx) => {
+  const cohort_size = await sql.begin(async (tx) => {
+    // Transaction-scoped: released on commit or rollback. Normalized schema names
+    // share a lock even when request-id casing differs; values stay bound.
+    await tx.unsafe(
+      "SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))",
+      [schema],
+    );
     // Drop and recreate schema atomically.
     await tx.unsafe(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
     await tx.unsafe(`CREATE SCHEMA ${schema}`);
@@ -286,13 +292,13 @@ export async function createSpe(
         `GRANT SELECT ON TABLE ${schema}.${table} TO service_role`,
       );
     }
+    // Keep the count under the same lock as DDL so a concurrent rebuild cannot
+    // replace this request's cohort before its result is read.
+    const countRows = await tx.unsafe(
+      `SELECT COUNT(*)::text AS n FROM ${schema}.patients`,
+    );
+    return parseInt(countRows[0].n, 10);
   });
-
-  // Count cohort size (outside transaction, schema is committed).
-  const countRows = await sql.unsafe(
-    `SELECT COUNT(*)::text AS n FROM ${schema}.patients`,
-  );
-  const cohort_size = parseInt(countRows[0].n, 10);
 
   return { schema, cohort_size, tables };
 }

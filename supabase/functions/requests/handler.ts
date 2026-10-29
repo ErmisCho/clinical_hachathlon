@@ -1,3 +1,8 @@
+import {
+  readRequestJson,
+  RequestInputError,
+  validateRequest,
+} from "../_shared/request_validation.ts";
 import { answerRequest, type SqlClient } from "../_shared/pipeline.ts";
 import {
   listRequests,
@@ -60,26 +65,16 @@ export function createHandler(connect: () => RequestDatabase) {
     let body: Record<string, unknown> | undefined;
     if (req.method === "POST") {
       try {
-        const value: unknown = await req.json();
-        if (!value || typeof value !== "object" || Array.isArray(value)) {
-          return json({ error: "body must be a JSON object" }, 400);
+        const value = await readRequestJson(req);
+        const problems = validateRequest(value);
+        if (problems.length) {
+          return json({ error: "invalid request", problems }, 400);
         }
         body = value as Record<string, unknown>;
-      } catch {
-        return json({ error: "invalid JSON body" }, 400);
-      }
-      for (const field of ["id", "requested_as", "purpose"]) {
-        if (typeof body[field] !== "string" || !body[field].trim()) {
-          return json({ error: `missing or invalid field "${field}"` }, 400);
-        }
-      }
-      if (
-        (body.question !== undefined && typeof body.question !== "string") ||
-        (body.definitions !== undefined &&
-          (!Array.isArray(body.definitions) ||
-            !body.definitions.every((item) => typeof item === "string")))
-      ) {
-        return json({ error: "invalid question or definitions" }, 400);
+      } catch (error) {
+        return error instanceof RequestInputError
+          ? json({ error: error.message }, error.status)
+          : json({ error: "invalid JSON body" }, 400);
       }
     }
 

@@ -9,16 +9,15 @@
  *  5. No remote imports; pure logic only.
  */
 
-import {
-  assertEquals,
-  assertThrows,
-} from "jsr:@std/assert";
+import { assertEquals, assertThrows } from "jsr:@std/assert";
 
 import {
+  createSpe,
   observationLoincParams,
   patientColumns,
   plannedTables,
   schemaName,
+  type SqlClient,
 } from "./spe.ts";
 import type { QueryPlan } from "./plan.ts";
 
@@ -108,7 +107,12 @@ Deno.test("plannedTables: returns only the listed record types", () => {
 Deno.test("plannedTables: returns all four record types", () => {
   const plan: QueryPlan = {
     ...basePlan(),
-    spe_record_types: ["conditions", "medications", "observations", "encounters"],
+    spe_record_types: [
+      "conditions",
+      "medications",
+      "observations",
+      "encounters",
+    ],
   };
   assertEquals(plannedTables(plan), [
     "conditions",
@@ -139,7 +143,11 @@ Deno.test("plannedTables: R05 fixture produces conditions, medications, observat
     spe_record_types: ["conditions", "medications", "observations"],
     spe_observation_loincs: ["4548-4"],
   };
-  assertEquals(plannedTables(plan), ["conditions", "medications", "observations"]);
+  assertEquals(plannedTables(plan), [
+    "conditions",
+    "medications",
+    "observations",
+  ]);
 });
 
 // ---------------------------------------------------------------------------
@@ -244,7 +252,10 @@ Deno.test("patientColumns: plan requesting 'patients' record type gets all demog
 Deno.test("patientColumns: plan requesting 'patients' alongside other types gets demographics", () => {
   const plan = {
     ...basePlan(),
-    spe_record_types: ["conditions", "patients"] as unknown as QueryPlan["spe_record_types"],
+    spe_record_types: [
+      "conditions",
+      "patients",
+    ] as unknown as QueryPlan["spe_record_types"],
   } as QueryPlan;
   assertEquals(patientColumns(plan), [
     "patient_id",
@@ -253,4 +264,104 @@ Deno.test("patientColumns: plan requesting 'patients' alongside other types gets
     "region",
     "data_holder",
   ]);
+});
+
+// Model transaction-scoped locks across independent clients without a database.
+function lockingDatabase() {
+  const locks = new Map<string, Promise<void>>();
+  const events: string[] = [];
+  let failDrop = false;
+  function client(): SqlClient {
+    return {
+      unsafe() {
+        throw new Error("SPE statements must stay inside the transaction");
+      },
+      async begin<T>(fn: (tx: SqlClient) => Promise<T>): Promise<T> {
+        let schema: string | undefined;
+        let unlock: (() => void) | undefined;
+        const tx: SqlClient = {
+          begin() {
+            throw new Error("unexpected nested transaction");
+          },
+          async unsafe(query, params = []) {
+            if (query.includes("pg_advisory_xact_lock")) {
+              assertEquals(
+                query,
+                "SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))",
+              );
+              assertEquals(schema, undefined);
+              schema = String(params[0]);
+              const previous = locks.get(schema) ?? Promise.resolve();
+              const current = new Promise<void>((resolve) => {
+                unlock = resolve;
+              });
+              locks.set(schema, current);
+              await previous;
+              events.push(`lock ${schema}`);
+            } else {
+              if (!schema) throw new Error("statement before lock");
+              events.push(`${query.split(" ")[0]} ${schema}`);
+              if (query.startsWith("DROP") && failDrop) {
+                failDrop = false;
+                throw new Error("simulated DDL failure");
+              }
+            }
+            // Yield so overlapping transactions have a chance to run.
+            await Promise.resolve();
+            return query.startsWith("SELECT COUNT") ? [{ n: "42" }] : [];
+          },
+        };
+        try {
+          return await fn(tx);
+        } finally {
+          if (schema) events.push(`release ${schema}`);
+          unlock?.();
+        }
+      },
+    };
+  }
+  return {
+    client,
+    events,
+    failNextDrop() {
+      failDrop = true;
+    },
+  };
+}
+Deno.test("SPE lock: same normalized schema serializes DDL and count across clients", async () => {
+  const db = lockingDatabase();
+  const results = await Promise.all(
+    ["R05", "r05"].map((id) => createSpe(basePlan(), db.client(), id)),
+  );
+  assertEquals(results.map((r) => r.cohort_size), [42, 42]);
+  const locks = db.events.flatMap((event, i) =>
+    event === "lock spe_r05" ? [i] : []
+  );
+  const release = db.events.indexOf("release spe_r05");
+  assertEquals(locks.length, 2);
+  assertEquals(locks[1] > release, true);
+  assertEquals(db.events[release - 1], "SELECT spe_r05");
+  assertEquals(db.events[locks[0] + 1], "DROP spe_r05");
+});
+Deno.test("SPE lock: distinct schemas can progress concurrently", async () => {
+  const db = lockingDatabase();
+  await Promise.all(
+    ["R05", "R06"].map((id) => createSpe(basePlan(), db.client(), id)),
+  );
+  assertEquals(
+    db.events.indexOf("lock spe_r06") < db.events.indexOf("release spe_r05"),
+    true,
+  );
+});
+Deno.test("SPE lock: rollback releases lock so a queued retry succeeds", async () => {
+  const db = lockingDatabase();
+  db.failNextDrop();
+  const results = await Promise.allSettled(
+    ["R05", "r05"].map((id) => createSpe(basePlan(), db.client(), id)),
+  );
+  assertEquals(results.map((r) => r.status), ["rejected", "fulfilled"]);
+  assertEquals(
+    db.events.filter((event) => event === "release spe_r05").length,
+    2,
+  );
 });
