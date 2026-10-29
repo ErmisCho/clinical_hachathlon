@@ -4,12 +4,15 @@ import {
   type Json,
   scoreResponse,
 } from "./eval_lib.ts";
+import { answerRequest } from "../supabase/functions/_shared/pipeline.ts";
 
 const usage = `Usage:
   deno run --allow-read --allow-net --allow-env=EHDS_TRACK_DIR scripts/eval.ts --target <base-url> [--key <key>]
   deno run --allow-read --allow-env=EHDS_TRACK_DIR scripts/eval.ts --responses <dir>
+  deno run --allow-read --allow-net --allow-env=DATABASE_URL,EHDS_TRACK_DIR scripts/eval.ts --local
 Offline: R01.json … R10.json contain one API response, or an array of three responses.
-One response is read afresh three times; an array supplies independent saved runs.`;
+One response is read afresh three times; an array supplies independent saved runs.
+--local: calls answerRequest() directly using DATABASE_URL (postgres connection string).`;
 
 /** Track root override; relative overrides are resolved against the working directory. */
 export function trackRequestFile(name: string, trackDir?: string): string | URL {
@@ -19,11 +22,15 @@ export function trackRequestFile(name: string, trackDir?: string): string | URL 
 }
 
 export async function main(args: string[]): Promise<number> {
-  const options: Record<string, string> = {};
+  const options: Record<string, string | true> = {};
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--help") {
       console.log(usage);
       return 0;
+    }
+    if (args[i] === "--local") {
+      options["--local"] = true;
+      continue;
     }
     if (
       !["--target", "--responses", "--key"].includes(args[i]) ||
@@ -33,18 +40,31 @@ export async function main(args: string[]): Promise<number> {
     }
     options[args[i]] = args[++i];
   }
+  const modeCount = [options["--target"], options["--responses"], options["--local"]]
+    .filter(Boolean).length;
   if (
-    Boolean(options["--target"]) === Boolean(options["--responses"]) ||
+    modeCount !== 1 ||
     (options["--key"] && !options["--target"])
   ) throw new Error(usage);
   const trackDir = Deno.env.get("EHDS_TRACK_DIR");
   const expected: Record<string, Expected> = JSON.parse(
     await Deno.readTextFile(trackRequestFile("expected.json", trackDir)),
   );
+  // Build the local sql client once before the request loop (lazy import).
+  // deno-lint-ignore no-explicit-any
+  let localSql: any | undefined;
+  if (options["--local"]) {
+    const databaseUrl = Deno.env.get("DATABASE_URL");
+    if (!databaseUrl) throw new Error("--local requires DATABASE_URL");
+    // postgres.js is a standard npm package; use the npm: specifier supported in Deno.
+    const { default: postgres } = await import("npm:postgres");
+    localSql = postgres(databaseUrl);
+  }
   let decisions = 0, numbers = 0, leakCount = 0, failures = 0;
   let slowest = 0, slowestId = "";
   const inconsistent: string[] = [];
   const rows = [];
+  try {
   for (let i = 1; i <= 10; i++) {
     const id = `R${String(i).padStart(2, "0")}`;
     if (!expected[id]) throw new Error(`Missing reference for ${id}`);
@@ -56,7 +76,14 @@ export async function main(args: string[]): Promise<number> {
       let started: number | undefined;
       try {
         let response: Json;
-        if (options["--responses"]) {
+        if (options["--local"]) {
+          const body = await Deno.readTextFile(
+            trackRequestFile(`${id}.json`, trackDir),
+          );
+          const requestJson = JSON.parse(body);
+          started = performance.now();
+          response = await answerRequest(requestJson, localSql) as unknown as Json;
+        } else if (options["--responses"]) {
           started = performance.now();
           const saved = JSON.parse(
             await Deno.readTextFile(`${options["--responses"]}/${id}.json`),
@@ -74,13 +101,14 @@ export async function main(args: string[]): Promise<number> {
           const headers: Record<string, string> = {
             "Content-Type": "application/json",
           };
-          if (options["--key"]) {
-            headers.Authorization = `Bearer ${options["--key"]}`;
-            headers.apikey = options["--key"];
+          const key = typeof options["--key"] === "string" ? options["--key"] : undefined;
+          if (key) {
+            headers.Authorization = `Bearer ${key}`;
+            headers.apikey = key;
           }
           started = performance.now();
           const result = await fetch(
-            `${options["--target"].replace(/\/+$/, "")}/requests`,
+            `${(options["--target"] as string).replace(/\/+$/, "")}/requests`,
             {
               method: "POST",
               headers,
@@ -143,6 +171,9 @@ export async function main(args: string[]): Promise<number> {
     });
     for (const detail of [...errors, ...leaks]) console.log(`${id}: ${detail}`);
   }
+  } finally {
+    if (localSql) await localSql.end();
+  }
   console.table(rows);
   console.log(
     `Decisions (including articles): ${decisions}/10; numbers: ${numbers}/6; leaks: ${leakCount}`,
@@ -150,8 +181,8 @@ export async function main(args: string[]): Promise<number> {
   console.log(`Inconsistent requests: ${inconsistent.join(", ") || "none"}`);
   console.log(
     `Slowest time: ${(slowest / 1000).toFixed(3)} s (${slowestId})${
-      options["--responses"]
-        ? " — offline read/parse time, not app latency"
+      options["--responses"] || options["--local"]
+        ? " — offline/local time, not HTTP latency"
         : ""
     }`,
   );
