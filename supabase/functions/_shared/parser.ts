@@ -16,6 +16,95 @@ type Concept = { name: string; filter: CohortFilter };
 const clean = (text: string) =>
   text.trim().replace(/\.$/, "").replace(/\s+/g, " ");
 const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** Convert a word/phrase to a snake_case identifier.
+ *  Pure-digit tokens are merged into the preceding token (e.g. "type 2" → "type2").
+ */
+function toLabel(text: string): string {
+  const tokens = text.toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length > 0);
+  const merged: string[] = [];
+  for (const token of tokens) {
+    if (/^\d+$/.test(token) && merged.length > 0) {
+      merged[merged.length - 1] += token;
+    } else {
+      merged.push(token);
+    }
+  }
+  return merged.join("_");
+}
+
+/** Clinical acronym: first letter of each part, splitting common medical prefixes.
+ *  "Oral anticoagulant" → "oac", "Atrial fibrillation" → "af".
+ */
+function clinicalAcronym(name: string): string {
+  const words = name.toLowerCase().split(/[\s-]+/).filter(Boolean);
+  const parts: string[] = [];
+  for (const word of words) {
+    if (/^\d+$/.test(word)) continue;
+    const m = word.match(
+      /^(anti|pre|post|sub|super|hyper|hypo|trans|intra|inter|extra)(.+)/,
+    );
+    if (m) {
+      parts.push(m[1][0], m[2][0]);
+    } else {
+      parts.push(word[0]);
+    }
+  }
+  return parts.join("");
+}
+
+/** Derive a readable label for a cohort-count metric from the text phrase used in
+ *  the report clause.  Falls back to a plain snake_case of the phrase when no
+ *  recognised pattern applies.
+ */
+function deriveCohortLabel(
+  phrase: string,
+  conceptList: { name: string; filter: CohortFilter }[],
+  obsList: { name: string }[],
+  tokenizeFn: (t: string) => string,
+): string {
+  const tokenized = tokenizeFn(phrase);
+  // Observation in phrase → patients_with_<obs> or women/men_with_<obs>
+  for (let i = 0; i < obsList.length; i++) {
+    if (tokenized.includes(`obs${i}`)) {
+      const obsLabel = toLabel(obsList[i].name);
+      const lower = phrase.toLowerCase();
+      if (/\bwomen\b/.test(lower)) return `women_with_${obsLabel}`;
+      if (/\bmen\b/.test(lower)) return `men_with_${obsLabel}`;
+      return `patients_with_${obsLabel}`;
+    }
+  }
+  // Concept in phrase
+  for (let i = 0; i < conceptList.length; i++) {
+    if (tokenized.includes(`concept${i}`)) {
+      const c = conceptList[i];
+      const cLabel = toLabel(c.name);
+      const lower = phrase.toLowerCase();
+      // "adults with <condition>"
+      if (/^(?:number of )?(?:all )?adults?\s+with\b/.test(lower)) {
+        return `adults_with_${cLabel}`;
+      }
+      // "patients with (an active) <medication>"
+      if (
+        c.filter.type === "has_medication" &&
+        /^(?:all )?patients?\s+with\b/.test(lower)
+      ) {
+        return `patients_with_${cLabel.split("_")[0]}`;
+      }
+      // "patients with <condition>"
+      if (/^(?:all )?patients?\s+with\b/.test(lower)) {
+        return cLabel.includes("_")
+          ? `${clinicalAcronym(c.name)}_patients`
+          : `${cLabel}_patients`;
+      }
+    }
+  }
+  // No recognised concept pattern — clean up the phrase directly
+  let label = phrase.toLowerCase()
+    .replace(/^number of\s+/, "")
+    .replace(/\b(?:an?|the)\s+/g, "");
+  return toLabel(label.trim());
+}
 const prefixList = "([A-Z][A-Z0-9.]*(?: or [A-Z][A-Z0-9.]*)*)";
 // Shared, non-capturing grammar fragments keep synonymous prefix predicates
 // consistent across diagnosis, condition and medication rules.
@@ -425,15 +514,28 @@ export function parseRequest(request: unknown): ParseResult {
         tokenize(ratio.numerator) !== tokenize(body.slice(comma + 1).trim())
       ) fail(ratio.original, "Cannot resolve percentage subset");
       for (const c of subset) cohort.splice(cohort.indexOf(c.filter), 1);
+      // Derive labels from request text:
+      // cohort denominator = first item before comma in the body
+      // subset = condition concept name
+      // percentage = ratio definition name + _pct
+      const cohortLabel = deriveCohortLabel(
+        body.slice(0, comma),
+        concepts,
+        observations,
+        tokenize,
+      );
+      const subsetLabel = toLabel(subset[0].name);
+      const pctLabel = `${toLabel(ratio.name)}_pct`;
+      metrics[0].label = cohortLabel;
       metrics.push({
         type: "count",
-        label: "subset",
+        label: subsetLabel,
         filters: subset.map((c) => c.filter),
       }, {
         type: "percentage",
-        label: "percentage",
-        numerator_label: "subset",
-        denominator_label: "cohort",
+        label: pctLabel,
+        numerator_label: subsetLabel,
+        denominator_label: cohortLabel,
       });
     } else if (mean) {
       const observation = observations.find((o) =>
@@ -445,9 +547,20 @@ export function parseRequest(request: unknown): ParseResult {
           "Mean requires a recognised count and an explicitly latest LOINC measurement",
         );
       } else {
+        // Derive labels: count = patients_with_<obs> (or women/men_with_<obs>)
+        // mean = mean_<obs>
+        const obsLabel = toLabel(observation.name);
+        const countLabel = deriveCohortLabel(
+          mean[1],
+          concepts,
+          observations,
+          tokenize,
+        );
+        const meanLabel = `mean_${obsLabel}`;
+        metrics[0].label = countLabel;
         metrics.push({
           type: "mean_observation",
-          label: "mean",
+          label: meanLabel,
           loinc: observation.loinc,
           use_latest: true,
         });
@@ -459,32 +572,55 @@ export function parseRequest(request: unknown): ParseResult {
       if (!countPhrase(gap[1]) || !medication) {
         fail(report.original, "Unrecognised treatment-gap count or medication");
       } else {
+        // Derive labels: cohort = deriveCohortLabel from gap denominator phrase
+        // without = without_<acronym(medication)>
+        // share = share_without_<acronym(medication)>_pct
+        const cohortLabel = deriveCohortLabel(
+          gap[1],
+          concepts,
+          observations,
+          tokenize,
+        );
+        const medAcronym = clinicalAcronym(medication.name);
+        const withoutLabel = `without_${medAcronym}`;
+        const shareLabel = `share_without_${medAcronym}_pct`;
+        metrics[0].label = cohortLabel;
         metrics.push({
           type: "count",
-          label: "without_medication",
+          label: withoutLabel,
           filters: [{ ...medication.filter, negate: true } as CohortFilter],
         }, {
           type: "percentage",
-          label: "percentage",
-          numerator_label: "without_medication",
-          denominator_label: "cohort",
+          label: shareLabel,
+          numerator_label: withoutLabel,
+          denominator_label: cohortLabel,
         });
       }
     } else if (percentages.length > 1) {
       if (!countPhrase(percentages[0])) {
         fail(report.original, "Unrecognised denominator count");
       }
+      // Derive cohort label from the denominator phrase (percentages[0])
+      const cohortLabel = deriveCohortLabel(
+        percentages[0],
+        concepts,
+        observations,
+        tokenize,
+      );
+      metrics[0].label = cohortLabel;
       for (const [i, name] of percentages.slice(1).entries()) {
         const medication = meds.find((c) =>
           c.name.toLowerCase() === name.toLowerCase()
         );
         if (!medication) fail(report.original, `Undefined medication: ${name}`);
         else {
+          // Derive percentage label: medication name snake_case + _pct
+          const pctLabel = `${toLabel(medication.name)}_pct`;
           metrics.push({
             type: "percentage",
-            label: `medication_${i}`,
+            label: pctLabel,
             numerator_filters: [medication.filter],
-            denominator_label: "cohort",
+            denominator_label: cohortLabel,
           });
         }
       }
@@ -502,6 +638,8 @@ export function parseRequest(request: unknown): ParseResult {
           );
         } else cohort.push(medication.filter);
       }
+      // Derive the single count label from the report body phrase
+      metrics[0].label = deriveCohortLabel(body, concepts, observations, tokenize);
     }
   } else if (records) {
     const recordTypes: RecordType[] = [];
@@ -544,6 +682,8 @@ export function parseRequest(request: unknown): ParseResult {
     if (!allObservations && providedLoincs.size) {
       plan.spe_observation_loincs = [...providedLoincs];
     }
+    // SPE requests report the cohort size, not a report-derived label
+    metrics[0].label = "cohort_size";
   } else fail("definitions", "No supported report clause found");
   if (errors.length) return { ok: false, errors };
   const validated = validatePlan(plan);

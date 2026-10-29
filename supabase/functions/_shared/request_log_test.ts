@@ -180,7 +180,7 @@ Deno.test("requests: POST runs real statistical pipeline, saves full JSON, only 
   const result = await response.json();
   equal(result.decision, "APPROVE_STATISTICAL");
   equal(result.request_id, "R01");
-  equal(result.answer, { Wien: { cohort: 25 }, Tirol: { cohort: "<10" } });
+  equal(result.answer, { Wien: { adults_with_type2_diabetes: 25 }, Tirol: { adults_with_type2_diabetes: "<10" } });
   assert(
     Array.isArray(result.articles) && typeof result.reason === "string",
     "decision envelope required",

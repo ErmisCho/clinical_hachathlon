@@ -4,9 +4,21 @@ import {
   ALL_EXAMPLES,
   EX_GROUP_DATA_HOLDER,
   EX_INPATIENT_ICD10,
+  R01,
+  R02,
+  R03,
+  R04,
+  R05,
+  R06,
+  R07,
+  R08,
+  R09,
+  R10,
 } from "./plan_examples.ts";
 import { validatePlan } from "./plan.ts";
 import type { QueryPlan } from "./plan.ts";
+import U01 from "../../fixtures/unseen/U01.json" with { type: "json" };
+import U02 from "../../fixtures/unseen/U02.json" with { type: "json" };
 
 function assert(condition: boolean, message: string): asserts condition {
   if (!condition) throw new Error(message);
@@ -556,3 +568,68 @@ Deno.test("plan equivalence preserves SPE scope and future fields", () => {
     "Equivalence ignored an age-band field",
   );
 });
+
+// ---------------------------------------------------------------------------
+// Label-exactness tests (issue #32)
+// ---------------------------------------------------------------------------
+
+/** The metric labels produced by the parser must equal the plan_examples labels
+ *  exactly for R01–R10 — these are the readable labels that applicants and the
+ *  jury see in the API answer.
+ */
+const LABEL_FIXTURES: Array<{ request: (typeof REQUEST_FIXTURES)[number]; example: { metrics: Array<{ label: string }> }; id: string }> = [
+  { request: REQUEST_FIXTURES[0], example: R01, id: "R01" },
+  { request: REQUEST_FIXTURES[1], example: R02, id: "R02" },
+  { request: REQUEST_FIXTURES[2], example: R03, id: "R03" },
+  { request: REQUEST_FIXTURES[3], example: R04, id: "R04" },
+  { request: REQUEST_FIXTURES[4], example: R05, id: "R05" },
+  { request: REQUEST_FIXTURES[5], example: R06, id: "R06" },
+  { request: REQUEST_FIXTURES[6], example: R07, id: "R07" },
+  { request: REQUEST_FIXTURES[7], example: R08, id: "R08" },
+  { request: REQUEST_FIXTURES[8], example: R09, id: "R09" },
+  { request: REQUEST_FIXTURES[9], example: R10, id: "R10" },
+];
+
+for (const { request, example, id } of LABEL_FIXTURES) {
+  Deno.test(`${id}: metric labels match plan_examples exactly`, () => {
+    const result = parseRequest(request);
+    assert(result.ok, `Parse failed: ${JSON.stringify(result)}`);
+    const parsedLabels = result.plan.metrics.map((m) => m.label);
+    const expectedLabels = example.metrics.map((m) => m.label);
+    assert(
+      JSON.stringify(parsedLabels) === JSON.stringify(expectedLabels),
+      `Label mismatch for ${id}: got ${JSON.stringify(parsedLabels)}, want ${JSON.stringify(expectedLabels)}`,
+    );
+  });
+}
+
+/** Labels for unseen requests must be readable snake_case identifiers, not the
+ *  generic fallback words that the old parser produced.
+ */
+const GENERIC_LABELS = new Set([
+  "cohort",
+  "subset",
+  "percentage",
+  "mean",
+  "without_medication",
+  "medication_0",
+  "medication_1",
+  "medication_2",
+]);
+
+for (const { request, id } of [{ request: U01, id: "U01" }, { request: U02, id: "U02" }]) {
+  Deno.test(`${id}: metric labels are readable, not generic`, () => {
+    const result = parseRequest(request);
+    assert(result.ok, `Parse failed: ${JSON.stringify(result)}`);
+    for (const metric of result.plan.metrics) {
+      assert(
+        !GENERIC_LABELS.has(metric.label),
+        `Generic label "${metric.label}" in ${id} — must be a readable identifier`,
+      );
+      assert(
+        /^[a-z][a-z0-9_]*$/.test(metric.label),
+        `Label "${metric.label}" in ${id} is not valid snake_case`,
+      );
+    }
+  });
+}
