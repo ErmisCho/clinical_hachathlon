@@ -1,0 +1,45 @@
+name: CI
+
+on: [push, pull_request]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - run: deno test
+      - name: Type check
+        shell: bash
+        run: |
+          shopt -s globstar
+          deno check supabase/functions/**/*.ts scripts/*.ts
+
+  eval:
+    runs-on: ubuntu-latest
+    env:
+      EVAL_BASE_URL: ${{ secrets.EVAL_BASE_URL }}
+      EVAL_KEY: ${{ secrets.EVAL_KEY }}
+      EHDS_TRACK_DIR: ${{ github.workspace }}/TRACK-3-ehds
+    steps:
+      - uses: actions/checkout@v4
+        if: env.EVAL_BASE_URL != ''
+      - uses: denoland/setup-deno@v2
+        if: env.EVAL_BASE_URL != ''
+        with:
+          deno-version: v2.x
+      - name: Check out track data
+        if: env.EVAL_BASE_URL != ''
+        uses: actions/checkout@v4
+        with:
+          repository: AIM-Austria/TRACK-3-ehds
+          path: TRACK-3-ehds
+          persist-credentials: false
+      - name: Eval deployed functions
+        if: env.EVAL_BASE_URL != ''
+        run: deno run -A scripts/eval.ts --target "$EVAL_BASE_URL" --key "$EVAL_KEY"

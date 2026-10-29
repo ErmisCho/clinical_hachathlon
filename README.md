@@ -50,9 +50,12 @@ Deno tests use local imports and require no network or data access.
 From the repository root, with `../TRACK-3-ehds/requests` available:
 
 ```sh
-deno run --allow-read --allow-net scripts/eval.ts --target https://YOUR_PROJECT.supabase.co/functions/v1 --key YOUR_ANON_KEY
-deno run --allow-read scripts/eval.ts --responses ./saved-responses
+deno run --allow-read --allow-net --allow-env=EHDS_TRACK_DIR scripts/eval.ts --target https://YOUR_PROJECT.supabase.co/functions/v1 --key YOUR_ANON_KEY
+deno run --allow-read --allow-env=EHDS_TRACK_DIR scripts/eval.ts --responses ./saved-responses
 ```
+
+Set `EHDS_TRACK_DIR` to override the track repository root (relative paths use the working directory); requests and `expected.json` are read from its `requests/` directory.
+CI runs tests and type checks on every push and pull request; deployed eval runs when repository secret `EVAL_BASE_URL` is set, using `EVAL_KEY` for the publishable/anon key, and is skipped otherwise. Require the `test` and `eval` checks in branch protection to block merging on failures.
 
 `--key` is optional and sets both Authorization (Bearer) and apikey headers.
 Saved files are `R01.json` through `R10.json`, each containing an API response

@@ -6,10 +6,17 @@ import {
 } from "./eval_lib.ts";
 
 const usage = `Usage:
-  deno run --allow-read --allow-net scripts/eval.ts --target <base-url> [--key <key>]
-  deno run --allow-read scripts/eval.ts --responses <dir>
+  deno run --allow-read --allow-net --allow-env=EHDS_TRACK_DIR scripts/eval.ts --target <base-url> [--key <key>]
+  deno run --allow-read --allow-env=EHDS_TRACK_DIR scripts/eval.ts --responses <dir>
 Offline: R01.json … R10.json contain one API response, or an array of three responses.
 One response is read afresh three times; an array supplies independent saved runs.`;
+
+/** Track root override; relative overrides are resolved against the working directory. */
+export function trackRequestFile(name: string, trackDir?: string): string | URL {
+  return trackDir
+    ? `${trackDir.replace(/[\\/]+$/, "")}/requests/${name}`
+    : new URL(`../../TRACK-3-ehds/requests/${name}`, import.meta.url);
+}
 
 export async function main(args: string[]): Promise<number> {
   const options: Record<string, string> = {};
@@ -30,9 +37,9 @@ export async function main(args: string[]): Promise<number> {
     Boolean(options["--target"]) === Boolean(options["--responses"]) ||
     (options["--key"] && !options["--target"])
   ) throw new Error(usage);
-  const requests = new URL("../../TRACK-3-ehds/requests/", import.meta.url);
+  const trackDir = Deno.env.get("EHDS_TRACK_DIR");
   const expected: Record<string, Expected> = JSON.parse(
-    await Deno.readTextFile(new URL("expected.json", requests)),
+    await Deno.readTextFile(trackRequestFile("expected.json", trackDir)),
   );
   let decisions = 0, numbers = 0, leakCount = 0, failures = 0;
   let slowest = 0, slowestId = "";
@@ -61,7 +68,9 @@ export async function main(args: string[]): Promise<number> {
           }
           response = Array.isArray(saved) ? saved[run] : saved;
         } else {
-          const body = await Deno.readTextFile(new URL(`${id}.json`, requests));
+          const body = await Deno.readTextFile(
+            trackRequestFile(`${id}.json`, trackDir),
+          );
           const headers: Record<string, string> = {
             "Content-Type": "application/json",
           };

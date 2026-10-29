@@ -4,10 +4,36 @@ import {
   type Json,
   scoreResponse,
 } from "./eval_lib.ts";
+import { trackRequestFile } from "./eval.ts";
 
 function assert(condition: boolean, message: string): asserts condition {
   if (!condition) throw new Error(message);
 }
+
+Deno.test("track files default to the sibling checkout regardless of working directory", () => {
+  for (const name of ["R01.json", "expected.json"]) {
+    assert(
+      String(trackRequestFile(name)) ===
+        new URL(`../../TRACK-3-ehds/requests/${name}`, import.meta.url).href,
+      "Default track files must remain next to the repository",
+    );
+  }
+});
+
+Deno.test("track directory override applies to requests and expected answers", () => {
+  for (const [dir, requests] of [
+    ["./TRACK-3-ehds", "./TRACK-3-ehds/requests/"],
+    ["/workspace/track/", "/workspace/track/requests/"],
+    ["C:\\track\\", "C:\\track/requests/"],
+  ]) {
+    for (const name of ["R01.json", "expected.json"]) {
+      assert(
+        trackRequestFile(name, dir) === `${requests}${name}`,
+        "Both request and reference files must use the configured track root",
+      );
+    }
+  }
+});
 
 const expected: Expected = {
   decision: "APPROVE_STATISTICAL",
