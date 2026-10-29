@@ -99,9 +99,10 @@ export function honestReview(response: PipelineResponse): boolean {
   return response.needs_review && response.answer === null &&
     ((response.parse_errors?.length ?? 0) > 0
       ? response.parse_errors!.every((e) => e.reason.trim().length > 0)
-      : /review|unsupported|ambiguous|unrecognised|unrecognized|cannot/i.test(
-        response.reason,
-      ));
+      : response.status === "staff_review" ||
+        /review|unsupported|ambiguous|unrecognised|unrecognized|cannot/i.test(
+          response.reason,
+        ));
 }
 export function assess(
   response: PipelineResponse,

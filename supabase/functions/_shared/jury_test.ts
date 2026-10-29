@@ -63,7 +63,7 @@ for (const { id, request, expected } of jury) {
       `${id}: wrong articles`,
     );
     const parsed = parseRequest(request);
-    if (expected.decision === "REJECT" || !parsed.ok) {
+    if (expected.decision === "REJECT" || decision.needs_review || !parsed.ok) {
       const result = await answerRequest(request, noDatabase);
       const score = assess(result, expected, null);
       assert(
@@ -72,7 +72,7 @@ for (const { id, request, expected } of jury) {
       );
       if (expected.decision !== "REJECT") {
         assert(
-          expected.parse === "review",
+          expected.parse === (parsed.ok ? "supported" : "review"),
           `${id}: unexpected parser regression: ${JSON.stringify(parsed)}`,
         );
       }
@@ -219,5 +219,45 @@ Deno.test("jury scorer: a wrong small count is a leak even when the correct coun
       { n: 120 },
     ).ok,
     "Unexpected legal articles must fail",
+  );
+});
+
+Deno.test("jury scorer: staff-review holds are flagged without parse errors or review wording", () => {
+  const held: PipelineResponse = {
+    ...response(null),
+    needs_review: true,
+    status: "staff_review",
+  };
+  const score = assess(held, stats, null);
+  assert(
+    score.flagged && score.ok,
+    "Held response must count as honest review",
+  );
+  for (
+    const invalid of [
+      { ...held, needs_review: false },
+      { ...held, status: "decided" as const },
+      { ...held, answer: { n: 999 } },
+      { ...held, parse_errors: [{ definition: "unknown", reason: " " }] },
+    ]
+  ) {
+    const score = assess(invalid, stats, null);
+    assert(
+      !score.flagged && !score.ok,
+      "Invalid hold must not excuse an answer",
+    );
+  }
+  assert(
+    !assess(held, { ...stats, decision: "REJECT", articles: ["54"] }, null).ok,
+    "A hold cannot excuse a prohibited approval",
+  );
+  const leaked = assess(
+    { ...held, population: { eligible_patients: 3 } },
+    stats,
+    null,
+  );
+  assert(
+    !leaked.ok && leaked.leaks.length > 0,
+    "Holds must retain leak checks",
   );
 });
