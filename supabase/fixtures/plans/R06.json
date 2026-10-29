@@ -1,0 +1,13 @@
+{
+  "request_id": "R06",
+  "cohort_filters": [
+    { "type": "age", "min_age": 18 },
+    { "type": "has_condition", "icd10_prefixes": ["F32"] },
+    { "type": "region", "value": "Oberösterreich" }
+  ],
+  "count_unit": "patient",
+  "metrics": [
+    { "type": "count", "label": "cohort_size" }
+  ],
+  "spe_record_types": ["conditions"]
+}

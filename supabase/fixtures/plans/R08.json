@@ -1,0 +1,14 @@
+{
+  "request_id": "R08",
+  "cohort_filters": [
+    { "type": "sex", "value": "female" },
+    { "type": "has_condition", "icd10_prefixes": ["C50"] },
+    { "type": "has_observation", "loinc": "39156-5" }
+  ],
+  "count_unit": "patient",
+  "dimensions": [{ "by": "region" }],
+  "metrics": [
+    { "type": "count", "label": "women_with_bmi" },
+    { "type": "mean_observation", "label": "mean_bmi", "loinc": "39156-5", "use_latest": true }
+  ]
+}

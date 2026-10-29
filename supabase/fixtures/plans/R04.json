@@ -1,0 +1,15 @@
+{
+  "request_id": "R04",
+  "cohort_filters": [
+    {
+      "type": "has_medication",
+      "atc_prefixes": ["A10BK"],
+      "active_on_ref_date": true
+    }
+  ],
+  "count_unit": "patient",
+  "dimensions": [{ "by": "region" }],
+  "metrics": [
+    { "type": "count", "label": "patients_with_sglt2" }
+  ]
+}

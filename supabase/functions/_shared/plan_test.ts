@@ -556,3 +556,82 @@ Deno.test("count metric filters with an invalid sub-filter are rejected", () => 
   );
 });
 
+// ---------------------------------------------------------------------------
+// spe_observation_loincs — new optional field
+// ---------------------------------------------------------------------------
+
+Deno.test("R05 has spe_observation_loincs with HbA1c LOINC", () => {
+  const r05 = ALL_EXAMPLES.find((p) => p.request_id === "R05");
+  assert(r05 !== undefined, "R05 not found");
+  assert(
+    Array.isArray(r05.spe_observation_loincs) &&
+      r05.spe_observation_loincs.length > 0,
+    "R05 must have spe_observation_loincs",
+  );
+  assert(
+    r05.spe_observation_loincs!.includes("4548-4"),
+    'R05 spe_observation_loincs must include "4548-4"',
+  );
+});
+
+Deno.test("spe_observation_loincs with a valid list is accepted", () => {
+  const plan = {
+    request_id: "TEST",
+    cohort_filters: [],
+    count_unit: "patient",
+    metrics: [{ type: "count", label: "n" }],
+    spe_record_types: ["observations"],
+    spe_observation_loincs: ["4548-4", "39156-5"],
+  };
+  const r = validatePlan(plan);
+  assert(r.ok, `must pass, got: ${r.ok ? "" : r.errors.map((e) => e.path + ": " + e.message).join(", ")}`);
+});
+
+Deno.test("spe_observation_loincs with an empty array is rejected", () => {
+  const bad = {
+    request_id: "TEST",
+    cohort_filters: [],
+    count_unit: "patient",
+    metrics: [{ type: "count", label: "n" }],
+    spe_observation_loincs: [],
+  };
+  const r = validatePlan(bad);
+  assert(!r.ok, "must fail");
+  assert(
+    r.errors.some((e) => e.path === "$.spe_observation_loincs"),
+    "error must mention spe_observation_loincs",
+  );
+});
+
+Deno.test("spe_observation_loincs with a non-string element is rejected", () => {
+  const bad = {
+    request_id: "TEST",
+    cohort_filters: [],
+    count_unit: "patient",
+    metrics: [{ type: "count", label: "n" }],
+    spe_observation_loincs: [42],
+  };
+  const r = validatePlan(bad);
+  assert(!r.ok, "must fail");
+  assert(
+    r.errors.some((e) => e.path === "$.spe_observation_loincs[0]"),
+    "error must mention the non-string element",
+  );
+});
+
+Deno.test("spe_observation_loincs as a non-array is rejected", () => {
+  const bad = {
+    request_id: "TEST",
+    cohort_filters: [],
+    count_unit: "patient",
+    metrics: [{ type: "count", label: "n" }],
+    spe_observation_loincs: "4548-4",
+  };
+  const r = validatePlan(bad);
+  assert(!r.ok, "must fail");
+  assert(
+    r.errors.some((e) => e.path === "$.spe_observation_loincs"),
+    "error must mention spe_observation_loincs",
+  );
+});
+

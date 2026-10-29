@@ -22,6 +22,7 @@ The validator rejects **unknown fields** at every level — a typo such as
 | `dimensions` | `Grouping[]` | no | 1 or 2 grouping dimensions; absent means the whole cohort is one row |
 | `metrics` | `Metric[]` | yes | One or more metrics to compute per group |
 | `spe_record_types` | `RecordType[]` | no | For SPE requests: the record tables to copy into the secure schema |
+| `spe_observation_loincs` | `string[]` | no | When `"observations"` is in `spe_record_types`: restrict copied observations to these LOINC codes. Must be non-empty when present. |
 
 Every query starts from the `eligible_patients` view, which silently excludes opted-out patients (Decision C).
 
@@ -305,6 +306,26 @@ schema. The browser role cannot read it; any download attempt returns HTTP 403
 (Decision E).
 
 Valid values: `"conditions"`, `"medications"`, `"observations"`, `"encounters"`.
+
+## SPE observation filter (`spe_observation_loincs`)
+
+When `"observations"` is listed in `spe_record_types`, the optional
+`spe_observation_loincs` field restricts which observation rows are copied into
+the secure schema to only those whose `loinc` column matches one of the listed
+codes. Absent means all observation rows for the cohort are copied.
+
+Must be a **non-empty array of strings** when present.
+
+```jsonc
+{
+  "spe_record_types": ["conditions", "medications", "observations"],
+  "spe_observation_loincs": ["4548-4"]
+}
+```
+
+| Field | Required | Notes |
+|---|---|---|
+| `spe_observation_loincs` | no | Non-empty `string[]`; filters observations by LOINC when present |
 
 ---
 

@@ -1,0 +1,27 @@
+{
+  "request_id": "R02",
+  "cohort_filters": [
+    { "type": "age", "min_age": 18 },
+    { "type": "has_condition", "icd10_prefixes": ["E11"] },
+    { "type": "has_observation", "loinc": "4548-4" }
+  ],
+  "count_unit": "patient",
+  "dimensions": [
+    {
+      "by": "age_band",
+      "bands": [
+        { "label": "18-29", "min_age": 18, "max_age": 29 },
+        { "label": "30-39", "min_age": 30, "max_age": 39 },
+        { "label": "40-49", "min_age": 40, "max_age": 49 },
+        { "label": "50-59", "min_age": 50, "max_age": 59 },
+        { "label": "60-69", "min_age": 60, "max_age": 69 },
+        { "label": "70-79", "min_age": 70, "max_age": 79 },
+        { "label": "80+",   "min_age": 80 }
+      ]
+    }
+  ],
+  "metrics": [
+    { "type": "count", "label": "patients_with_hba1c" },
+    { "type": "mean_observation", "label": "mean_hba1c", "loinc": "4548-4", "use_latest": true }
+  ]
+}

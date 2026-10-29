@@ -188,6 +188,12 @@ export interface QueryPlan {
   /** For SPE requests: the record tables to copy into the secure schema.
    *  Absent for statistical requests. */
   spe_record_types?: RecordType[];
+
+  /** For SPE requests that include "observations" in spe_record_types: restrict
+   *  the observations copied to only those with a matching LOINC code.
+   *  Absent means all observation rows for the cohort are copied.
+   *  Must be a non-empty array when present. */
+  spe_observation_loincs?: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -524,6 +530,7 @@ export function validatePlan(
         "dimensions",
         "metrics",
         "spe_record_types",
+        "spe_observation_loincs",
       ],
       "$",
     ),
@@ -594,6 +601,20 @@ export function validatePlan(
           );
         }
       });
+    }
+  }
+
+  // spe_observation_loincs (optional, non-empty string array)
+  if (raw["spe_observation_loincs"] !== undefined) {
+    if (!isArray(raw["spe_observation_loincs"])) {
+      errs.push(err("$.spe_observation_loincs", "must be an array if present"));
+    } else {
+      if ((raw["spe_observation_loincs"] as unknown[]).length === 0) {
+        errs.push(err("$.spe_observation_loincs", "must not be empty"));
+      }
+      errs.push(
+        ...isStringArray(raw["spe_observation_loincs"], "$.spe_observation_loincs"),
+      );
     }
   }
 

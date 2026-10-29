@@ -1,0 +1,22 @@
+{
+  "request_id": "R01",
+  "cohort_filters": [
+    { "type": "age", "min_age": 18 }
+  ],
+  "count_unit": "patient",
+  "dimensions": [{ "by": "region" }],
+  "metrics": [
+    { "type": "count", "label": "adults" },
+    {
+      "type": "count",
+      "label": "type2_diabetes",
+      "filters": [{ "type": "has_condition", "icd10_prefixes": ["E11"] }]
+    },
+    {
+      "type": "percentage",
+      "label": "prevalence_pct",
+      "numerator_label": "type2_diabetes",
+      "denominator_label": "adults"
+    }
+  ]
+}

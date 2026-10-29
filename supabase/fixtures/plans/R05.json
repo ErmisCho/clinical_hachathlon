@@ -1,0 +1,14 @@
+{
+  "request_id": "R05",
+  "cohort_filters": [
+    { "type": "age", "min_age": 18 },
+    { "type": "has_condition", "icd10_prefixes": ["E11"] },
+    { "type": "has_observation", "loinc": "4548-4" }
+  ],
+  "count_unit": "patient",
+  "metrics": [
+    { "type": "count", "label": "cohort_size" }
+  ],
+  "spe_record_types": ["conditions", "medications", "observations"],
+  "spe_observation_loincs": ["4548-4"]
+}

@@ -1,0 +1,28 @@
+{
+  "request_id": "R10",
+  "cohort_filters": [
+    { "type": "has_condition", "icd10_prefixes": ["J44"] }
+  ],
+  "count_unit": "patient",
+  "dimensions": [
+    {
+      "by": "age_band",
+      "bands": [
+        { "label": "0-9",   "min_age": 0,  "max_age": 9  },
+        { "label": "10-19", "min_age": 10, "max_age": 19 },
+        { "label": "20-29", "min_age": 20, "max_age": 29 },
+        { "label": "30-39", "min_age": 30, "max_age": 39 },
+        { "label": "40-49", "min_age": 40, "max_age": 49 },
+        { "label": "50-59", "min_age": 50, "max_age": 59 },
+        { "label": "60-69", "min_age": 60, "max_age": 69 },
+        { "label": "70-79", "min_age": 70, "max_age": 79 },
+        { "label": "80-89", "min_age": 80, "max_age": 89 },
+        { "label": "90+",   "min_age": 90 }
+      ]
+    },
+    { "by": "region" }
+  ],
+  "metrics": [
+    { "type": "count", "label": "copd_patients" }
+  ]
+}

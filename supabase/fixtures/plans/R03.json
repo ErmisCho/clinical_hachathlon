@@ -1,0 +1,39 @@
+{
+  "request_id": "R03",
+  "cohort_filters": [
+    { "type": "age", "min_age": 65 },
+    { "type": "has_condition", "icd10_prefixes": ["I48"] }
+  ],
+  "count_unit": "patient",
+  "dimensions": [
+    {
+      "by": "age_band",
+      "bands": [
+        { "label": "65-74", "min_age": 65, "max_age": 74 },
+        { "label": "75-84", "min_age": 75, "max_age": 84 },
+        { "label": "85+",   "min_age": 85 }
+      ]
+    }
+  ],
+  "metrics": [
+    { "type": "count", "label": "af_patients" },
+    {
+      "type": "count",
+      "label": "without_oac",
+      "filters": [
+        {
+          "type": "has_medication",
+          "atc_prefixes": ["B01AA", "B01AF"],
+          "active_on_ref_date": true,
+          "negate": true
+        }
+      ]
+    },
+    {
+      "type": "percentage",
+      "label": "share_without_oac_pct",
+      "numerator_label": "without_oac",
+      "denominator_label": "af_patients"
+    }
+  ]
+}

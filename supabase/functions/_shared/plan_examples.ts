@@ -148,6 +148,7 @@ export const R05: QueryPlan = {
     { type: "count", label: "cohort_size" },
   ],
   spe_record_types: ["conditions", "medications", "observations"],
+  spe_observation_loincs: ["4548-4"],
 };
 
 // ---------------------------------------------------------------------------

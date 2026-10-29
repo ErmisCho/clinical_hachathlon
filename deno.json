@@ -1,4 +1,7 @@
 {
+  "tasks": {
+    "test": "deno test --allow-read"
+  },
   "test": {
     "include": [
       "supabase/functions/_shared/**/*_test.ts",
