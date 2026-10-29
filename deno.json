@@ -1,0 +1,8 @@
+{
+  "test": {
+    "include": ["supabase/functions/_shared/**/*_test.ts"]
+  },
+  "fmt": {
+    "include": ["supabase/functions/_shared/", "deno.json"]
+  }
+}

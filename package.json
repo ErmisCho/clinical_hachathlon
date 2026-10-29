@@ -1,0 +1,11 @@
+{
+  "name": "ehds-health-data-access-body",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "load-data": "node scripts/load-data.mjs"
+  },
+  "dependencies": {
+    "postgres": "^3.4.7"
+  }
+}
