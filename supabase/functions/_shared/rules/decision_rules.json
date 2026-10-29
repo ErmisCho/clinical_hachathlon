@@ -1,0 +1,305 @@
+{
+  "version": "1.0.0",
+  "rules": [
+    {
+      "id": "P01",
+      "kind": "prohibited",
+      "article_ref": "54",
+      "label": "insurance premiums / insurance decisions",
+      "phrases": [
+        "insurance premium",
+        "align.*premium",
+        "premium.*risk",
+        "exclud.*insurance",
+        "insurance.*contract",
+        "\\bunderwriting\\b",
+        "\\binsurance\\b.*\\b(?:risk scor|coverage|eligibility)"
+      ],
+      "examples": [
+        "We want to align private health insurance premiums for customers with their actual risk.",
+        "We build an underwriting score to decide who may buy a policy.",
+        "We will use the data to evaluate insurance risk scoring for coverage eligibility."
+      ],
+      "counter_examples": [
+        "We will not use the data for insurance premiums; our purpose is clinical research.",
+        "This study is not related to insurance contracts or underwriting in any way.",
+        "Research on cardiovascular risk factors to guide prevention advice.",
+        "We won't align any premiums; data is used for public health analysis."
+      ]
+    },
+    {
+      "id": "P02",
+      "kind": "prohibited",
+      "article_ref": "54",
+      "label": "advertising or marketing",
+      "phrases": [
+        "\\badvertis",
+        "\\bmarketing\\b",
+        "physician advertising",
+        "advertising campaign",
+        "\\bsales\\s+leads?\\b",
+        "\\bpromotional\\s+outreach\\b",
+        "\\btarget\\b.*\\bcommercial\\s+offers?\\b"
+      ],
+      "examples": [
+        "We want to focus our physician advertising campaign on target regions.",
+        "Select customers for a marketing campaign.",
+        "Build sales leads from hospital data.",
+        "We plan a promotional outreach program using patient data."
+      ],
+      "counter_examples": [
+        "We will not use this data for marketing or advertising.",
+        "This is not for any marketing purpose; it is clinical research.",
+        "We won't run any advertising campaigns with these results.",
+        "Research on diabetes prevention and quality improvement programmes."
+      ]
+    },
+    {
+      "id": "P03",
+      "kind": "prohibited",
+      "article_ref": "54",
+      "label": "detrimental decisions about employees / re-identification",
+      "phrases": [
+        "\\bemployee\\b",
+        "match.*employee",
+        "employee.*list",
+        "renew.*contract",
+        "sick\\s+leave",
+        "\\bjob\\s+applicants?\\b.*\\b(?:rank|screen|hiring)\\b",
+        "\\b(?:rank|screen)\\b.*\\b(?:workers?|staff|job\\s+applicants?)\\b"
+      ],
+      "examples": [
+        "We will match the records with our employee list to see who has been diagnosed with depression.",
+        "We want to reduce sick leave by screening workers for mental illness.",
+        "Rank job applicants for hiring based on predicted future illness.",
+        "Screen workers for promotion using health data."
+      ],
+      "counter_examples": [
+        "We will not use this data for any employee decisions or sick-leave analysis.",
+        "Research on workplace wellness interventions in the general population.",
+        "We never intend to screen job applicants; this is epidemiological research.",
+        "Public health study on occupational disease patterns."
+      ]
+    },
+    {
+      "id": "P04",
+      "kind": "prohibited",
+      "article_ref": "54",
+      "label": "tobacco / nicotine / illicit products",
+      "phrases": [
+        "\\bnicotine\\b",
+        "\\btobacco\\b",
+        "\\bcigarette",
+        "nicotine\\s+pouch",
+        "healthier\\s+alternative"
+      ],
+      "examples": [
+        "We are developing new nicotine pouch flavours and want to know which age groups have the most smokers' lung disease.",
+        "We want to market cigarettes as a healthier alternative.",
+        "Our product is a tobacco substitute; we need health data to position it."
+      ],
+      "counter_examples": [
+        "We will not develop or market tobacco or nicotine products.",
+        "Research on smoking cessation interventions and lung disease prevention.",
+        "Study on COPD prevalence to plan pulmonary rehabilitation programmes.",
+        "We never mention nicotine; this is cardiovascular disease research."
+      ]
+    },
+    {
+      "id": "P05",
+      "kind": "prohibited",
+      "article_ref": "54",
+      "label": "development of alcoholic products",
+      "phrases": [
+        "\\b(?:develop|optimise|optimize|tailor)\\w*\\b.*\\balcohol(?:ic)?\\s+(?:products?|beverages?|drinks?)\\b"
+      ],
+      "examples": [
+        "We are developing alcoholic beverages tailored to specific health profiles.",
+        "Our goal is to optimise alcoholic drinks for consumers with low BMI."
+      ],
+      "counter_examples": [
+        "We will not develop alcoholic products; we study alcohol-related liver disease.",
+        "Public health research into alcohol consumption and prevention of liver disease.",
+        "Research on alcohol-attributable disease burden for policy guidelines."
+      ]
+    },
+    {
+      "id": "P06",
+      "kind": "prohibited",
+      "article_ref": "54",
+      "label": "re-identification of data subjects",
+      "phrases": [
+        "\\bre[- ]?identif(?:y|ication)\\b",
+        "\\brecover\\b.*\\bidentities\\b",
+        "\\blink\\b.*\\bpseudonyms?\\b.*\\b(?:names|addresses)\\b"
+      ],
+      "examples": [
+        "We aim to re-identify patients using an external registry.",
+        "Use the result to re-identify people by joining an external roster.",
+        "We will recover identities from the pseudonymous records.",
+        "We intend to link pseudonyms to names and addresses."
+      ],
+      "counter_examples": [
+        "We will never attempt re-identification of any data subject.",
+        "We won't re-identify people; data is used for aggregate disease mapping.",
+        "Our study is purely statistical with no attempt to link pseudonyms to names.",
+        "Research on anonymised population-level health trends."
+      ]
+    },
+    {
+      "id": "P07",
+      "kind": "prohibited",
+      "article_ref": "54",
+      "label": "weapons or illicit drugs",
+      "phrases": [
+        "\\bweapon",
+        "\\billicit\\s+drug"
+      ],
+      "examples": [
+        "We want to use health data to develop biological weapons.",
+        "We are researching illicit drug distribution networks."
+      ],
+      "counter_examples": [
+        "We will not use this data for weapons development or illicit drugs.",
+        "Research on substance use disorders and treatment outcomes.",
+        "We never study weapons; this is clinical oncology research."
+      ]
+    },
+    {
+      "id": "P08",
+      "kind": "prohibited",
+      "article_ref": "54",
+      "label": "passing data to third parties not in permit",
+      "phrases": [
+        "\\bthird[\\s\\-]+part"
+      ],
+      "examples": [
+        "We will share results with third parties for further analysis.",
+        "Data will be transferred to third-party commercial entities."
+      ],
+      "counter_examples": [
+        "We will not share data with any third parties outside our research group.",
+        "No third-party access is planned; all analysis is internal.",
+        "We never share patient data with third parties; see our data governance policy."
+      ]
+    },
+    {
+      "id": "A01",
+      "kind": "allowed",
+      "article_ref": "53",
+      "label": "scientific research",
+      "phrases": [
+        "\\bresearch\\b"
+      ],
+      "examples": [
+        "We study cardiovascular disease risk factors for clinical research.",
+        "This is a research project on diabetes prevention.",
+        "Epidemiological research into treatment outcomes."
+      ],
+      "counter_examples": [
+        "This is not for research; it is an internal business analysis.",
+        "We clarify this is not for research; data is for commercial segmentation."
+      ]
+    },
+    {
+      "id": "A02",
+      "kind": "allowed",
+      "article_ref": "53",
+      "label": "public health",
+      "phrases": [
+        "\\bpublic\\s+health\\b"
+      ],
+      "examples": [
+        "Public health surveillance of infectious disease.",
+        "We study this for public health planning."
+      ],
+      "counter_examples": [
+        "This is not for public health; it is for private insurance use."
+      ]
+    },
+    {
+      "id": "A03",
+      "kind": "allowed",
+      "article_ref": "53",
+      "label": "prevention / guidelines / quality",
+      "phrases": [
+        "\\bprevention\\b",
+        "\\bguideline",
+        "\\bquality\\s+(programme|program|improvement|in\\s+healthcare)",
+        "\\bofficial\\s+statistic",
+        "\\bhealth\\s+report",
+        "\\bteaching\\b"
+      ],
+      "examples": [
+        "We want to plan a prevention programme.",
+        "Updating clinical guidelines for GP teaching.",
+        "Quality improvement in healthcare delivery.",
+        "Official statistics on hospital use for the annual health report."
+      ],
+      "counter_examples": [
+        "We clarify this is not for prevention or quality; it is for product development."
+      ]
+    },
+    {
+      "id": "A04",
+      "kind": "allowed",
+      "article_ref": "53",
+      "label": "AI/model training or validation",
+      "phrases": [
+        "\\btrain.*model",
+        "\\bvalidat.*model",
+        "\\bprediction\\b"
+      ],
+      "examples": [
+        "We train and validate a model to predict HbA1c deterioration.",
+        "Building a prediction model for hospital readmission."
+      ],
+      "counter_examples": [
+        "We will not train any models; this is a descriptive statistics request."
+      ]
+    },
+    {
+      "id": "A05",
+      "kind": "allowed",
+      "article_ref": "53",
+      "label": "clinical / epidemiological / treatment-gap",
+      "phrases": [
+        "\\bclinical\\b",
+        "\\bepidemiolog",
+        "\\btreatment\\s+gap",
+        "\\brisk\\s+factor",
+        "\\bprevention\\s+advice",
+        "\\bannual\\b"
+      ],
+      "examples": [
+        "Clinical research on anticoagulation treatment gap in atrial fibrillation.",
+        "Epidemiological study of breast cancer risk factors.",
+        "Annual health statistics on inpatient stays."
+      ],
+      "counter_examples": [
+        "This is not a clinical study; it is a market analysis."
+      ]
+    },
+    {
+      "id": "S01",
+      "kind": "spe_justification",
+      "article_ref": "66",
+      "label": "statistics / aggregates are not sufficient",
+      "phrases": [
+        "aggregates?\\s+are\\s+not\\s+enough",
+        "statistics?\\s+are\\s+not\\s+enough",
+        "(?:aggregates?|statistics?)\\s+(?:are|is)\\s+insufficient\\s+because\\b"
+      ],
+      "examples": [
+        "Training needs individual-level histories; aggregates are not enough.",
+        "Statistics are not enough because we need linked longitudinal trajectories.",
+        "Aggregates are insufficient because we need per-patient time-series."
+      ],
+      "counter_examples": [
+        "We would prefer individual-level records.",
+        "Patient-level data would be convenient.",
+        "Row-level histories are our preferred format."
+      ]
+    }
+  ]
+}

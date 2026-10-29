@@ -1,0 +1,6 @@
+{
+  "decision": "APPROVE_STATISTICAL",
+  "articles": ["53", "69"],
+  "rationale": "Negating all allowed purposes leaves needs_review=true; no prohibited use is present. The ambiguous purpose without a supported allowed category requires review; the question is too vague to parse.",
+  "parse": "review"
+}

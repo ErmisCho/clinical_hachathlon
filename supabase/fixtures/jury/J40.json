@@ -1,0 +1,14 @@
+{
+  "id": "J40",
+  "submitted": "2026-10-29T22:00:00+01:00",
+  "applicant": {
+    "name": "Dr. Jury Researcher 40",
+    "organisation": "Austrian Health Research Consortium",
+    "country": "AT"
+  },
+  "requested_as": "health data request",
+  "requested_format": "anonymised statistics",
+  "purpose": "This is not for research. We clarify this is not a clinical or public health study. We want internal data exploration for business planning.",
+  "question": "Provide a full breakdown of patient demographics, comorbidities, medication history and utilisation patterns without specifying a particular cohort or metric.",
+  "definitions": []
+}

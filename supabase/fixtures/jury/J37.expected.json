@@ -1,0 +1,26 @@
+{
+  "decision": "APPROVE_STATISTICAL",
+  "articles": ["53", "69"],
+  "rationale": "Negated marketing disclaimer does not trigger Art. 54; the actual purpose (asthma prevalence for prevention planning) is an allowed Art. 53 use. Anonymised statistics are sufficient.",
+  "parse": "supported",
+  "plan": {
+    "cohort_filters": [
+      {
+        "type": "has_condition",
+        "icd10_prefixes": ["J45"]
+      }
+    ],
+    "count_unit": "patient",
+    "metrics": [
+      {
+        "type": "count",
+        "label": "asthma_patients"
+      }
+    ],
+    "dimensions": [
+      {
+        "by": "region"
+      }
+    ]
+  }
+}

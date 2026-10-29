@@ -148,6 +148,30 @@ import requestJ36 from "../../fixtures/jury/J36.json" with { type: "json" };
 import expectedJ36 from "../../fixtures/jury/J36.expected.json" with {
   type: "json",
 };
+import requestJ37 from "../../fixtures/jury/J37.json" with { type: "json" };
+import expectedJ37 from "../../fixtures/jury/J37.expected.json" with {
+  type: "json",
+};
+import requestJ38 from "../../fixtures/jury/J38.json" with { type: "json" };
+import expectedJ38 from "../../fixtures/jury/J38.expected.json" with {
+  type: "json",
+};
+import requestJ39 from "../../fixtures/jury/J39.json" with { type: "json" };
+import expectedJ39 from "../../fixtures/jury/J39.expected.json" with {
+  type: "json",
+};
+import requestJ40 from "../../fixtures/jury/J40.json" with { type: "json" };
+import expectedJ40 from "../../fixtures/jury/J40.expected.json" with {
+  type: "json",
+};
+import requestJ41 from "../../fixtures/jury/J41.json" with { type: "json" };
+import expectedJ41 from "../../fixtures/jury/J41.expected.json" with {
+  type: "json",
+};
+import requestJ42 from "../../fixtures/jury/J42.json" with { type: "json" };
+import expectedJ42 from "../../fixtures/jury/J42.expected.json" with {
+  type: "json",
+};
 
 export const JURY_FIXTURES: {
   id: string;
@@ -382,5 +406,45 @@ export const JURY_FIXTURES: {
     id: "J36",
     request: requestJ36,
     expected: expectedJ36 as JuryExpected,
+  },
+  {
+    id: "J37",
+    request: requestJ37,
+    expected: expectedJ37 as JuryExpected,
+    sql:
+      "-- Independent reference for J37: asthma patients by region (negated marketing disclaimer, actual research purpose).\nWITH universe AS (SELECT DISTINCT region FROM public.eligible_patients WHERE region IS NOT NULL)\nSELECT ARRAY[u.region,'asthma_patients'] AS path, 'count' AS kind,\n (SELECT count(DISTINCT p.patient_id)::text FROM public.eligible_patients p WHERE p.region=u.region AND (EXISTS (SELECT 1 FROM public.conditions c WHERE c.patient_id=p.patient_id AND c.icd10 LIKE 'J45%'))) AS n\nFROM universe u ORDER BY path;\n",
+  },
+  {
+    id: "J38",
+    request: requestJ38,
+    expected: expectedJ38 as JuryExpected,
+    sql:
+      "-- Independent reference for J38: adult obesity patients by region (negated insurance/employee disclaimer, epidemiological purpose).\nWITH universe AS (SELECT DISTINCT region FROM public.eligible_patients WHERE region IS NOT NULL)\nSELECT ARRAY[u.region,'adults_with_obesity'] AS path, 'count' AS kind,\n (SELECT count(DISTINCT p.patient_id)::text FROM public.eligible_patients p WHERE p.region=u.region AND (2025-EXTRACT(YEAR FROM p.birth_date)>=18 AND EXISTS (SELECT 1 FROM public.conditions c WHERE c.patient_id=p.patient_id AND c.icd10 LIKE 'E66%'))) AS n\nFROM universe u ORDER BY path;\n",
+  },
+  {
+    id: "J39",
+    request: requestJ39,
+    expected: expectedJ39 as JuryExpected,
+    sql:
+      "-- Independent reference for J39: adults with atrial fibrillation by hospital (negated re-identification/third-party disclaimers, treatment gaps purpose).\nWITH universe AS (SELECT DISTINCT data_holder FROM public.eligible_patients WHERE data_holder IS NOT NULL)\nSELECT ARRAY[u.data_holder,'adults_with_atrial_fibrillation'] AS path, 'count' AS kind,\n (SELECT count(DISTINCT p.patient_id)::text FROM public.eligible_patients p WHERE p.data_holder=u.data_holder AND (2025-EXTRACT(YEAR FROM p.birth_date)>=18 AND EXISTS (SELECT 1 FROM public.conditions c WHERE c.patient_id=p.patient_id AND c.icd10 LIKE 'I48%'))) AS n\nFROM universe u ORDER BY path;\n",
+  },
+  {
+    id: "J40",
+    request: requestJ40,
+    expected: expectedJ40 as JuryExpected,
+    sql:
+      "-- J40 is a review case (no supported parse); no reference SQL is applicable.\n-- The request disavows all allowed purposes and the question is too vague to parse.\nSELECT 1 FROM public.eligible_patients LIMIT 0;\n",
+  },
+  {
+    id: "J41",
+    request: requestJ41,
+    expected: expectedJ41 as JuryExpected,
+  },
+  {
+    id: "J42",
+    request: requestJ42,
+    expected: expectedJ42 as JuryExpected,
+    sql:
+      "-- Independent reference for J42: adult CKD patients by hospital (negated marketing/advertising disclaimers, epidemiological purpose).\nWITH universe AS (SELECT DISTINCT data_holder FROM public.eligible_patients WHERE data_holder IS NOT NULL)\nSELECT ARRAY[u.data_holder,'adults_with_chronic_kidney_disease'] AS path, 'count' AS kind,\n (SELECT count(DISTINCT p.patient_id)::text FROM public.eligible_patients p WHERE p.data_holder=u.data_holder AND (2025-EXTRACT(YEAR FROM p.birth_date)>=18 AND EXISTS (SELECT 1 FROM public.conditions c WHERE c.patient_id=p.patient_id AND c.icd10 LIKE 'N18%'))) AS n\nFROM universe u ORDER BY path;\n",
   },
 ];

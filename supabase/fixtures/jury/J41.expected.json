@@ -1,0 +1,6 @@
+{
+  "decision": "REJECT",
+  "articles": ["54"],
+  "rationale": "The negated re-identification disclaimer in sentence one does not shield the actual prohibited use in sentence two: aligning insurance premiums with patient risk is a prohibited Art. 54 purpose regardless of any disclaimer.",
+  "parse": "supported"
+}

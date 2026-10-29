@@ -1,0 +1,18 @@
+{
+  "id": "J42",
+  "submitted": "2026-10-29T22:00:00+01:00",
+  "applicant": {
+    "name": "Dr. Jury Researcher 42",
+    "organisation": "Austrian Health Research Consortium",
+    "country": "AT"
+  },
+  "requested_as": "health data request",
+  "requested_format": "anonymised statistics",
+  "purpose": "We never engage in marketing, advertising, or employee screening. Our purpose is epidemiological research on chronic kidney disease prevalence by hospital for planning a prevention programme.",
+  "question": "Count adults with chronic kidney disease by hospital.",
+  "definitions": [
+    "Adult = aged 18 or older on 31 December 2025.",
+    "Chronic kidney disease = any condition with an ICD-10 code starting with N18.",
+    "Report per hospitals: adults with chronic kidney disease."
+  ]
+}

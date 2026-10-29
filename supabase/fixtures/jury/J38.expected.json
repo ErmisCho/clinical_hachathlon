@@ -1,0 +1,30 @@
+{
+  "decision": "APPROVE_STATISTICAL",
+  "articles": ["53", "69"],
+  "rationale": "Negated insurance/employee disclaimer does not trigger Art. 54; epidemiological research on obesity for public health policy is an allowed Art. 53 purpose. Anonymised statistics are sufficient.",
+  "parse": "supported",
+  "plan": {
+    "cohort_filters": [
+      {
+        "type": "age",
+        "min_age": 18
+      },
+      {
+        "type": "has_condition",
+        "icd10_prefixes": ["E66"]
+      }
+    ],
+    "count_unit": "patient",
+    "metrics": [
+      {
+        "type": "count",
+        "label": "adults_with_obesity"
+      }
+    ],
+    "dimensions": [
+      {
+        "by": "region"
+      }
+    ]
+  }
+}
