@@ -21,11 +21,26 @@ export function organisationType(value: unknown): string {
   if (typeof value !== "string") return "Other";
   // Specific commercial terms take priority over ambiguous "agency"/"public".
   const categories: [RegExp, string][] = [
-    [/\b(insurance|insurer)\b/i, "Insurer"],
-    [/\b(pharma\w*|company|gmbh|ag|ltd|marketing)\b/i, "Company"],
-    [/\b(university|research|institute)\b/i, "Research institution"],
-    [/\b(hospital|clinic)\b/i, "Healthcare provider"],
-    [/\b(ministry|agency|authority|public)\b/i, "Public body"],
+    [
+      /\b(insurance|insurer)\b|versicherung|versicherer|krankenkasse/i,
+      "Insurer",
+    ],
+    [
+      /\b(pharma\w*|company|gmbh|ag|kg|og|ltd|marketing)\b|\be\.u\./i,
+      "Company",
+    ],
+    [
+      /\b(university|research|institute)\b|universität|hochschule|institut|forschung|zentrum/i,
+      "Research institution",
+    ],
+    [
+      /\b(hospital|clinic)\b|krankenhaus|klinik|klinikum|spital|krankenhausverbund|gesundheitsverbund/i,
+      "Healthcare provider",
+    ],
+    [
+      /\b(ministry|agency|authority|public)\b|amt|behörde|ministerium|agentur für|landes|gemeinde/i,
+      "Public body",
+    ],
   ];
   return categories.find(([pattern]) => pattern.test(value))?.[1] ?? "Other";
 }

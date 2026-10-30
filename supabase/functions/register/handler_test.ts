@@ -111,6 +111,23 @@ Deno.test("organisation map returns categories only, with explicit precedence", 
   ) assert(organisationType(name) === category);
 });
 
+Deno.test("organisation map recognizes German names and insurer precedence", () => {
+  for (
+    const [name, category] of [
+      ["Krankenhausverbund Felsenauen", "Healthcare provider"],
+      ["Amt für Bevölkerungsgesundheit Auenried", "Public body"],
+      ["Agentur für Gesundheitsplanung Waldkiesel", "Public body"],
+      ["Institut für Versorgungsforschung Birkensteg", "Research institution"],
+      ["Felsenquell Privatversicherung AG", "Insurer"],
+      ["Talwiesen Prädiktive Gesundheit GmbH", "Company"],
+    ]
+  ) {
+    assert(organisationType(name) === category, name);
+    assert(organisationType(name.toUpperCase()) === category, name);
+    assert(organisationType(name.toLowerCase()) === category, name);
+  }
+});
+
 Deno.test("register HTTP routing, bounded query, cleanup and CORS", async () => {
   let connected = 0;
   let closed = 0;
