@@ -700,3 +700,434 @@ Deno.test("prefix synonyms preserve code and full-clause consumption", () => {
     );
   }
 });
+
+// ---------------------------------------------------------------------------
+// New-wording variant tests (issue #84)
+// ---------------------------------------------------------------------------
+
+// --- No-op definitions ---
+Deno.test("no-op: opt-out exclusion and reference-date restatements are silently accepted", () => {
+  const result = parseRequest({
+    id: "noop-test",
+    definitions: [
+      "Exclude patients who opted out of reuse.",
+      "Use 31 December 2025 as the reference date; age is 2025 minus birth year.",
+      "Asthma = any condition with an ICD-10 code starting with J45.",
+      "Report per region: patients with asthma.",
+    ],
+  });
+  assert(result.ok, JSON.stringify(result));
+  assert(
+    result.plan.cohort_filters.some((f) =>
+      f.type === "has_condition" &&
+      (f as { icd10_prefixes: string[] }).icd10_prefixes.includes("J45")
+    ),
+    "Condition filter must still be present after no-ops",
+  );
+});
+
+// --- "X means a conditions.icd10 code beginning Y" ---
+for (
+  const [variant, code, conceptName] of [
+    ["Hypertension means a conditions.icd10 code beginning I10.", "I10", "hypertension"],
+    ["Type 2 diabetes means a condition code beginning E11.", "E11", "type 2 diabetes"],
+    ["COPD means a condition ICD-10 code beginning J44.", "J44", "copd"],
+    ["Stroke means conditions.icd10 beginning I63.", "I63", "stroke"],
+    ["Breast cancer means conditions.icd10 beginning C50.", "C50", "breast cancer"],
+  ] as const
+) {
+  Deno.test(`condition "means" variant: ${variant}`, () => {
+    const result = parseRequest({
+      id: "means-cond-test",
+      definitions: [
+        variant,
+        `Report per region: patients with ${conceptName}.`,
+      ],
+    });
+    assert(result.ok, JSON.stringify(result));
+    assert(
+      result.plan.cohort_filters.some((f) =>
+        f.type === "has_condition" &&
+        (f as { icd10_prefixes: string[] }).icd10_prefixes.includes(code)
+      ),
+      `Code ${code} missing from cohort_filters`,
+    );
+  });
+}
+
+// --- "X means conditions.icd10 beginning Y; adults are 18 or older" ---
+for (
+  const trailing of [
+    "adults are 18 or older",
+    "adults are 18",
+    "adult means at least 18 years",
+    "adults are 18 or older",
+  ]
+) {
+  Deno.test(`combined condition+age trailing clause: ${trailing}`, () => {
+    const result = parseRequest({
+      id: "combined-cond-age",
+      definitions: [
+        `Hypertension means conditions.icd10 beginning I10; ${trailing}.`,
+        "Metric: hypertension_adults.",
+      ],
+    });
+    assert(result.ok, `${trailing}: ${JSON.stringify(result)}`);
+    assert(
+      result.plan.cohort_filters.some((f) => f.type === "age"),
+      "Age filter must be derived from trailing clause",
+    );
+  });
+}
+
+// --- "X are prescriptions with ATC beginning Y" and "X means ATC beginning Y" ---
+for (
+  const [variant, code] of [
+    ["ACE inhibitors are prescriptions with ATC beginning C09AA.", "C09AA"],
+    ["SGLT2 inhibitor means ATC beginning A10BK.", "A10BK"],
+  ] as const
+) {
+  Deno.test(`medication "means/are" variant: ${variant}`, () => {
+    const result = parseRequest({
+      id: "means-med-test",
+      definitions: [
+        variant,
+        "A prescription is current if it started on or before 31 December 2025 and its end date is blank or on or after that date.",
+        "Count distinct people of any age; metric: users.",
+      ],
+    });
+    assert(result.ok, JSON.stringify(result));
+    assert(
+      result.plan.cohort_filters.some((f) =>
+        f.type === "has_medication" &&
+        (f as { atc_prefixes: string[] }).atc_prefixes.includes(code)
+      ),
+      `ATC code ${code} missing`,
+    );
+  });
+}
+
+// --- Alternate active-medication phrasing ---
+Deno.test("alternate active-medication phrasing: A prescription is current if...", () => {
+  const result = parseRequest({
+    id: "alt-active-med",
+    definitions: [
+      "Statin = ATC code starting with C10AA.",
+      "A prescription is current if it started on or before 31 December 2025 and its end date is blank or on or after that date.",
+      "Report per region: patients with an active statin.",
+    ],
+  });
+  assert(result.ok, JSON.stringify(result));
+});
+
+// --- Inline sex + age definition ---
+Deno.test("inline 'Female sex; age N to M inclusive' definition", () => {
+  const result = parseRequest({
+    id: "sex-age-inline",
+    definitions: [
+      "Female sex; age 50 to 69 inclusive at the reference date.",
+      "Breast cancer = any condition with an ICD-10 code starting with C50.",
+      "Report per hospitals: patients with breast cancer.",
+    ],
+  });
+  assert(result.ok, JSON.stringify(result));
+  const filters = result.plan.cohort_filters;
+  assert(
+    filters.some((f) => f.type === "sex" && (f as { value: string }).value === "female"),
+    "Sex filter missing",
+  );
+  assert(
+    filters.some((f) =>
+      f.type === "age" &&
+      (f as { min_age: number }).min_age === 50 &&
+      (f as { max_age?: number }).max_age === 69
+    ),
+    "Age filter 50-69 missing",
+  );
+});
+
+// --- "Count each adult (N years or older) once; metric: label" ---
+Deno.test("count each adult once; explicit metric label", () => {
+  const result = parseRequest({
+    id: "count-adult-once",
+    definitions: [
+      "Hypertension = any condition with an ICD-10 code starting with I10.",
+      "Count each adult (18 years or older) once; metric: hypertension_adults.",
+    ],
+  });
+  assert(result.ok, JSON.stringify(result));
+  assert(
+    result.plan.cohort_filters.some((f) => f.type === "age"),
+    "Age filter must be added",
+  );
+  assert(result.plan.metrics[0].label === "hypertension_adults", "Wrong metric label");
+  assert(!result.plan.dimensions, "Should be no dimensions");
+});
+
+// --- "Count distinct people of any age; metric: label" ---
+Deno.test("count distinct people of any age; explicit metric", () => {
+  const result = parseRequest({
+    id: "count-people",
+    definitions: [
+      "ACE inhibitors = ATC code starting with C09AA.",
+      "A medication is active on 31 December 2025 if start_date is on or before that day and end_date is empty or on or after that day.",
+      "Count distinct people of any age; metric: current_ace_users.",
+    ],
+  });
+  assert(result.ok, JSON.stringify(result));
+  assert(result.plan.metrics[0].label === "current_ace_users", "Wrong metric label");
+});
+
+// --- "Group by patients.data_holder, ...; metric: label" ---
+Deno.test("group by patients.data_holder with explicit metric", () => {
+  const result = parseRequest({
+    id: "group-holder",
+    definitions: [
+      "COPD = any condition with an ICD-10 code starting with J44.",
+      "Adult = aged 18 or older on 31 December 2025.",
+      "Group by patients.data_holder, include all hospitals, and count each adult once; metric: copd_adults.",
+    ],
+  });
+  assert(result.ok, JSON.stringify(result));
+  assert(result.plan.dimensions?.[0].by === "data_holder", "Wrong grouping");
+  assert(result.plan.metrics[0].label === "copd_adults", "Wrong metric");
+});
+
+// --- "All ages, grouped by patients.data_holder; metric: label" ---
+Deno.test("All ages, grouped by patients.data_holder; metric", () => {
+  const result = parseRequest({
+    id: "all-ages-grouped",
+    definitions: [
+      "Drug = ATC code starting with A10BK.",
+      "A medication is active on 31 December 2025 if start_date is on or before that day and end_date is empty or on or after that day.",
+      "All ages, grouped by patients.data_holder; metric: sglt2_users.",
+    ],
+  });
+  assert(result.ok, JSON.stringify(result));
+  assert(result.plan.dimensions?.[0].by === "data_holder", "Wrong grouping");
+});
+
+// --- "Inpatient encounters only, start date in calendar year YYYY" ---
+Deno.test("Inpatient encounters only with calendar year", () => {
+  const result = parseRequest({
+    id: "inpatient-year",
+    definitions: [
+      "Inpatient encounters only, start date in calendar year 2023.",
+      "Main diagnosis (primary_icd10) starting with J18.",
+      "Count distinct encounter_id, not patients; no grouping. Metric: pneumonia_stays_2023.",
+    ],
+  });
+  assert(result.ok, JSON.stringify(result));
+  assert(result.plan.count_unit === "encounter", "Must count encounters");
+  const ef = result.plan.cohort_filters.find((f) => f.type === "encounter_filter") as
+    | { encounter_type: string; start_year: number; primary_icd10_prefix: string }
+    | undefined;
+  assert(ef?.encounter_type === "inpatient" && ef?.start_year === 2023, "Wrong encounter filter");
+  assert(ef?.primary_icd10_prefix === "J18", "Wrong primary icd10 prefix");
+});
+
+// --- "Only inpatient stays starting in YYYY; encounters.primary_icd10 begins CODE" ---
+Deno.test("Only inpatient stays starting in YYYY; encounters.primary_icd10 begins CODE", () => {
+  for (
+    const def of [
+      "Only inpatient stays starting in 2024; encounters.primary_icd10 begins J44.",
+      "Only inpatient encounters beginning in 2025; primary_icd10 begins I63.",
+    ]
+  ) {
+    const result = parseRequest({
+      id: "inpatient-inline",
+      definitions: [
+        def,
+        "Metric: test_stays.",
+      ],
+    });
+    assert(result.ok, `${def}: ${JSON.stringify(result)}`);
+    assert(result.plan.count_unit === "encounter", "Must count encounters");
+  }
+});
+
+// --- "X means encounters.primary_icd10 beginning CODE" ---
+Deno.test("encounters.primary_icd10 beginning CODE", () => {
+  const result = parseRequest({
+    id: "enc-icd10",
+    definitions: [
+      "Inpatient stay = encounter with type 'inpatient'.",
+      "Pneumonia means encounters.primary_icd10 beginning J18, regardless of conditions.csv.",
+      "Count distinct encounter_id, not patients; no grouping. Metric: pneumonia_stays.",
+    ],
+  });
+  assert(result.ok, JSON.stringify(result));
+  const ef = result.plan.cohort_filters.find((f) => f.type === "encounter_filter") as
+    | { primary_icd10_prefix: string }
+    | undefined;
+  assert(ef?.primary_icd10_prefix === "J18", "Wrong prefix");
+});
+
+// --- Grouped encounter count with separate "Count distinct encounters" and "Group by" ---
+Deno.test("separate group-by and count-distinct-encounters definitions combine correctly", () => {
+  const result = parseRequest({
+    id: "group-enc",
+    definitions: [
+      "Only inpatient stays starting in 2024; encounters.primary_icd10 begins J44.",
+      "Group by encounters.data_holder, not the patient's home region or record holder; include all three hospitals.",
+      "Count distinct encounters; metric: copd_stays_2024.",
+    ],
+  });
+  assert(result.ok, JSON.stringify(result));
+  assert(result.plan.count_unit === "encounter", "Must count encounters");
+  assert(result.plan.dimensions?.[0].by === "data_holder", "Wrong grouping");
+  assert(result.plan.metrics[0].label === "copd_stays_2024", "Wrong metric");
+});
+
+// --- "Group by patients.region, ...; count encounters rather than distinct people" ---
+Deno.test("group by region with encounter counting", () => {
+  const result = parseRequest({
+    id: "region-enc",
+    definitions: [
+      "Only inpatient encounters beginning in 2025; primary_icd10 begins I63.",
+      "Group by patients.region, including every region; count encounters rather than distinct people.",
+      "Metric: stroke_stays_2025.",
+    ],
+  });
+  assert(result.ok, JSON.stringify(result));
+  assert(result.plan.count_unit === "encounter", "Must count encounters");
+  assert(result.plan.dimensions?.[0].by === "region", "Wrong grouping");
+  assert(result.plan.metrics[0].label === "stroke_stays_2025", "Wrong metric");
+});
+
+// --- Standalone "Metric: label" with encounter filter ---
+Deno.test("standalone Metric: with encounter filter", () => {
+  const result = parseRequest({
+    id: "metric-only",
+    definitions: [
+      "Only inpatient encounters beginning in 2025; primary_icd10 begins I63.",
+      "Group by patients.region, including every region; count encounters rather than distinct people.",
+      "Metric: stroke_stays_2025.",
+    ],
+  });
+  assert(result.ok, JSON.stringify(result));
+  assert(result.plan.metrics[0].label === "stroke_stays_2025", "Wrong metric");
+});
+
+// --- "No grouping; mean to one decimal. Metrics: A and B" ---
+Deno.test("No grouping mean report with explicit metric pair labels", () => {
+  const result = parseRequest({
+    id: "no-group-mean",
+    definitions: [
+      "Stroke = any condition with an ICD-10 code starting with I63.",
+      "Adult = aged 18 or older on 31 December 2025.",
+      "Use the latest systolic blood pressure (LOINC 8480-6) per patient.",
+      "No grouping; mean to one decimal. Metrics: systolic_measured and systolic_mean.",
+    ],
+  });
+  assert(result.ok, JSON.stringify(result));
+  assert(!result.plan.dimensions, "No dimensions expected");
+  assert(result.plan.metrics[0].label === "systolic_measured", "Count label");
+  assert(result.plan.metrics[1].label === "systolic_mean", "Mean label");
+  assert(result.plan.metrics[1].type === "mean_observation", "Must be mean metric");
+});
+
+// --- "Overall results only, one decimal for the mean; metrics: A and B" ---
+Deno.test("Overall results only mean report", () => {
+  const result = parseRequest({
+    id: "overall-mean",
+    definitions: [
+      "Type 2 diabetes = any condition with an ICD-10 code starting with E11.",
+      "Adult = aged 18 or older on 31 December 2025.",
+      "Use the latest HbA1c (LOINC 4548-4) per patient.",
+      "Overall results only, one decimal for the mean; metrics: hba1c_measured and hba1c_mean.",
+    ],
+  });
+  assert(result.ok, JSON.stringify(result));
+  assert(result.plan.metrics[0].label === "hba1c_measured", "Count label");
+  assert(result.plan.metrics[1].label === "hba1c_mean", "Mean label");
+});
+
+// --- New observation variants ---
+Deno.test("Use the last observation on or before the reference date with LOINC Y", () => {
+  const result = parseRequest({
+    id: "last-obs",
+    definitions: [
+      "Type 2 diabetes = any condition with an ICD-10 code starting with E11.",
+      "Adult = aged 18 or older on 31 December 2025.",
+      "Use the last observation on or before the reference date with LOINC 4548-4; do not average all visits.",
+      "Overall results only, one decimal for the mean; metrics: hba1c_measured and hba1c_mean.",
+    ],
+  });
+  assert(result.ok, JSON.stringify(result));
+  assert(result.plan.metrics.some((m) => m.type === "mean_observation"), "Mean observation must be present");
+});
+
+// --- SPE: "Cohort: adults aged at least N with conditions.icd10 beginning C and LOINC Y" ---
+Deno.test("SPE cohort definition with conditions.icd10 and observation", () => {
+  const result = parseRequest({
+    id: "spe-cohort",
+    definitions: [
+      "Cohort: adults aged at least 18 with a conditions.icd10 code beginning I10 and at least one systolic blood pressure observation (LOINC 8480-6).",
+      "Requested tables: conditions and observations, restricting observations to LOINC 8480-6; retain pseudonymous patient linkage only.",
+    ],
+    question: "We request linked diagnosis histories and repeated systolic blood pressure readings for the adult hypertension cohort.",
+    requested_as: "health data access application",
+    requested_format: "pseudonymised records",
+    purpose: "Clinical research on within-person blood pressure trajectories.",
+  });
+  assert(result.ok, JSON.stringify(result));
+  assert(result.plan.spe_record_types?.includes("conditions") === true, "conditions missing");
+  assert(result.plan.spe_record_types?.includes("observations") === true, "observations missing");
+  assert(
+    result.plan.spe_observation_loincs?.includes("8480-6") === true,
+    "LOINC restriction missing",
+  );
+  assert(
+    result.plan.cohort_filters.some((f) => f.type === "age"),
+    "Age filter missing",
+  );
+  assert(
+    result.plan.cohort_filters.some((f) => f.type === "has_condition"),
+    "Condition filter missing",
+  );
+});
+
+// --- "If aggregate access suffices, report the single metric cohort_size" ---
+Deno.test("aggregate downgrade: if aggregate access suffices report cohort_size", () => {
+  const result = parseRequest({
+    id: "downgrade",
+    definitions: [
+      "Cohort: adults aged at least 18 with a conditions.icd10 code beginning I10 and at least one systolic blood pressure observation (LOINC 8480-6).",
+      "Requested tables: conditions and observations, restricting observations to LOINC 8480-6; retain pseudonymous patient linkage only.",
+      "If aggregate access suffices, report the single metric cohort_size.",
+    ],
+    question: "Could we get individual diagnosis histories for the hypertension cohort?",
+    requested_as: "health data access application",
+    requested_format: "pseudonymised records",
+    purpose: "Clinical research.",
+  });
+  assert(result.ok, JSON.stringify(result));
+  assert(!result.plan.spe_record_types, "Should NOT be SPE when downgraded");
+  assert(result.plan.metrics[0].label === "cohort_size", "Metric must be cohort_size");
+});
+
+// --- Verify new variants don't change existing supported phrasing ---
+Deno.test("new variants do not alter existing standard phrasing plans", () => {
+  // These fixtures must still parse identically after the grammar extension.
+  const r1 = parseRequest({
+    id: "old-style-condition",
+    definitions: [
+      "Asthma = any condition with an ICD-10 code starting with J45.",
+      "Report per region: patients with asthma.",
+    ],
+  });
+  assert(r1.ok, JSON.stringify(r1));
+  const r2 = parseRequest({
+    id: "new-style-condition",
+    definitions: [
+      "Asthma means a conditions.icd10 code beginning J45.",
+      "Report per region: patients with asthma.",
+    ],
+  });
+  assert(r2.ok, JSON.stringify(r2));
+  assert(
+    JSON.stringify(r1.plan.cohort_filters) === JSON.stringify(r2.plan.cohort_filters),
+    "Old and new condition styles must produce identical cohort filters",
+  );
+});
