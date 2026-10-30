@@ -107,7 +107,7 @@ const SUMMARIES: Record<string, string> = {
   "53":
     "Lists the allowed purposes for accessing health data for secondary use, including research, statistics, education, and quality improvement.",
   "54":
-    "Prohibits using health data for insurance decisions, advertising, harmful products, employee profiling, or third-party sharing outside the permit.",
+    "Prohibits using health data for detrimental decisions about people; decisions about job offers, less favourable goods or services, insurance or credit, or other discriminatory decisions; advertising or marketing; developing harmful products or services; and activities conflicting with ethical provisions of national law.",
   "66":
     "Requires that only the minimum necessary data be provided, in anonymised form unless pseudonymised data is justified.",
   "67":
@@ -275,7 +275,7 @@ interface ProhibitedMapping {
 
 const PROHIBITED_MAPPINGS: ProhibitedMapping[] = [
   {
-    // insurance premiums / insurance decisions → Art. 54(1)(b)
+    // insurance premiums / insurance decisions (Art. 54(1)(b)) → Art. 54(1)(b)
     patterns: [
       /insurance\s+premium/i,
       /align.*premium/i,

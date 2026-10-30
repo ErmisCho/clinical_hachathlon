@@ -1,11 +1,11 @@
 {
-  "version": "1.0.0",
+  "version": "1.0.1",
   "rules": [
     {
       "id": "P01",
       "kind": "prohibited",
       "article_ref": "54",
-      "label": "insurance premiums / insurance decisions",
+      "label": "insurance premiums / insurance decisions (Art. 54(1)(b))",
       "phrases": [
         "insurance premium",
         "align.*premium",
@@ -58,7 +58,7 @@
       "id": "P03",
       "kind": "prohibited",
       "article_ref": "54",
-      "label": "detrimental decisions about employees / re-identification",
+      "label": "job offers / discriminatory decisions (Art. 54(1)(b))",
       "phrases": [
         "\\bemployee\\b",
         "match.*employee",
