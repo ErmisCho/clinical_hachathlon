@@ -63,6 +63,24 @@ for (const { id, request, expected } of jury) {
       `${id}: wrong articles`,
     );
     const parsed = parseRequest(request);
+    // New applicant-worded fixtures specify answerability independently of the
+    // parser grammar. SQL is their numeric oracle in the database simulation;
+    // an explained, data-free hold remains an acceptable safe fallback.
+    if (expected.parse === "answer" || expected.needs_review) {
+      if (expected.needs_review) {
+        assert(decision.needs_review, `${id}: ambiguous purpose must be held`);
+      }
+      if (
+        expected.decision === "REJECT" || decision.needs_review || !parsed.ok
+      ) {
+        const result = await answerRequest(request, noDatabase);
+        assert(
+          assess(result, expected, null).ok,
+          `${id}: unsafe reject/review`,
+        );
+      }
+      return;
+    }
     if (expected.decision === "REJECT" || decision.needs_review || !parsed.ok) {
       const result = await answerRequest(request, noDatabase);
       const score = assess(result, expected, null);

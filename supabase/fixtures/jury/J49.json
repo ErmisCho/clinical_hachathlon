@@ -1,0 +1,20 @@
+{
+  "id": "J49",
+  "submitted": "2026-10-30T10:00:00+01:00",
+  "applicant": {
+    "name": "Dr. Applicant 49",
+    "organisation": "Austrian Outcomes Study Group",
+    "country": "AT"
+  },
+  "requested_as": "health data request",
+  "requested_format": "anonymised statistics",
+  "purpose": "Clinical research to improve prevention and health service planning.",
+  "question": "Our breast cancer service wants a small table by hospital: how many women aged fifty through sixty-nine have a breast cancer diagnosis in the supplied history?",
+  "definitions": [
+    "Exclude patients who opted out of reuse.",
+    "Use 31 December 2025 as the reference date; age is 2025 minus birth year.",
+    "Female sex; age 50 to 69 inclusive at the reference date.",
+    "Breast cancer means conditions.icd10 beginning C50.",
+    "Group by patients.data_holder, count distinct patients; metric: breast_cancer_women_50_69."
+  ]
+}

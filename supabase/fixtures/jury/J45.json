@@ -1,0 +1,20 @@
+{
+  "id": "J45",
+  "submitted": "2026-10-30T10:00:00+01:00",
+  "applicant": {
+    "name": "Dr. Applicant 45",
+    "organisation": "Austrian Outcomes Study Group",
+    "country": "AT"
+  },
+  "requested_as": "health data request",
+  "requested_format": "anonymised statistics",
+  "purpose": "Clinical research to improve prevention and health service planning.",
+  "question": "Among adults with type 2 diabetes, please calculate the average of each person’s most recent glycated haemoglobin result, expressed in percent, together with how many people actually had a result.",
+  "definitions": [
+    "Exclude patients who opted out of reuse.",
+    "Use 31 December 2025 as the reference date; age is 2025 minus birth year.",
+    "Type 2 diabetes means a condition code beginning E11.",
+    "Use the last observation on or before the reference date with LOINC 4548-4; do not average all visits.",
+    "Overall results only, one decimal for the mean; metrics: hba1c_measured and hba1c_mean."
+  ]
+}

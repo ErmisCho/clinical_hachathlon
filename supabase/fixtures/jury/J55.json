@@ -1,0 +1,19 @@
+{
+  "id": "J55",
+  "submitted": "2026-10-30T10:00:00+01:00",
+  "applicant": {
+    "name": "Dr. Applicant 55",
+    "organisation": "Austrian Outcomes Study Group",
+    "country": "AT"
+  },
+  "requested_as": "health data access application",
+  "requested_format": "pseudonymised records",
+  "purpose": "Clinical research on within-person blood pressure trajectories. Statistics are not enough because we must link repeated measurements within each person over time to estimate individual slopes; pooled averages remove the timing and within-person correlation. All record analysis will remain in the secure processing environment.",
+  "question": "We request linked diagnosis histories and repeated systolic blood pressure readings, in millimetres of mercury, for the adult hypertension cohort inside the secure processing environment.",
+  "definitions": [
+    "Exclude patients who opted out of reuse.",
+    "Use 31 December 2025 as the reference date; age is 2025 minus birth year.",
+    "Cohort: adults aged at least 18 with a conditions.icd10 code beginning I10 and at least one systolic blood pressure observation (LOINC 8480-6).",
+    "Requested tables: conditions and observations, restricting observations to LOINC 8480-6; retain pseudonymous patient linkage only."
+  ]
+}

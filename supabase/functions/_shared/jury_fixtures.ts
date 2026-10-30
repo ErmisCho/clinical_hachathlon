@@ -173,6 +173,67 @@ import expectedJ42 from "../../fixtures/jury/J42.expected.json" with {
   type: "json",
 };
 
+import requestJ43 from "../../fixtures/jury/J43.json" with { type: "json" };
+import expectedJ43 from "../../fixtures/jury/J43.expected.json" with {
+  type: "json",
+};
+import requestJ44 from "../../fixtures/jury/J44.json" with { type: "json" };
+import expectedJ44 from "../../fixtures/jury/J44.expected.json" with {
+  type: "json",
+};
+import requestJ45 from "../../fixtures/jury/J45.json" with { type: "json" };
+import expectedJ45 from "../../fixtures/jury/J45.expected.json" with {
+  type: "json",
+};
+import requestJ46 from "../../fixtures/jury/J46.json" with { type: "json" };
+import expectedJ46 from "../../fixtures/jury/J46.expected.json" with {
+  type: "json",
+};
+import requestJ47 from "../../fixtures/jury/J47.json" with { type: "json" };
+import expectedJ47 from "../../fixtures/jury/J47.expected.json" with {
+  type: "json",
+};
+import requestJ48 from "../../fixtures/jury/J48.json" with { type: "json" };
+import expectedJ48 from "../../fixtures/jury/J48.expected.json" with {
+  type: "json",
+};
+import requestJ49 from "../../fixtures/jury/J49.json" with { type: "json" };
+import expectedJ49 from "../../fixtures/jury/J49.expected.json" with {
+  type: "json",
+};
+import requestJ50 from "../../fixtures/jury/J50.json" with { type: "json" };
+import expectedJ50 from "../../fixtures/jury/J50.expected.json" with {
+  type: "json",
+};
+import requestJ51 from "../../fixtures/jury/J51.json" with { type: "json" };
+import expectedJ51 from "../../fixtures/jury/J51.expected.json" with {
+  type: "json",
+};
+import requestJ52 from "../../fixtures/jury/J52.json" with { type: "json" };
+import expectedJ52 from "../../fixtures/jury/J52.expected.json" with {
+  type: "json",
+};
+import requestJ53 from "../../fixtures/jury/J53.json" with { type: "json" };
+import expectedJ53 from "../../fixtures/jury/J53.expected.json" with {
+  type: "json",
+};
+import requestJ54 from "../../fixtures/jury/J54.json" with { type: "json" };
+import expectedJ54 from "../../fixtures/jury/J54.expected.json" with {
+  type: "json",
+};
+import requestJ55 from "../../fixtures/jury/J55.json" with { type: "json" };
+import expectedJ55 from "../../fixtures/jury/J55.expected.json" with {
+  type: "json",
+};
+import requestJ56 from "../../fixtures/jury/J56.json" with { type: "json" };
+import expectedJ56 from "../../fixtures/jury/J56.expected.json" with {
+  type: "json",
+};
+import requestJ57 from "../../fixtures/jury/J57.json" with { type: "json" };
+import expectedJ57 from "../../fixtures/jury/J57.expected.json" with {
+  type: "json",
+};
+
 export const JURY_FIXTURES: {
   id: string;
   request: HealthDataRequest;
@@ -446,5 +507,110 @@ export const JURY_FIXTURES: {
     expected: expectedJ42 as JuryExpected,
     sql:
       "-- Independent reference for J42: adult CKD patients by hospital (negated marketing/advertising disclaimers, epidemiological purpose).\nWITH universe AS (SELECT DISTINCT data_holder FROM public.eligible_patients WHERE data_holder IS NOT NULL)\nSELECT ARRAY[u.data_holder,'adults_with_chronic_kidney_disease'] AS path, 'count' AS kind,\n (SELECT count(DISTINCT p.patient_id)::text FROM public.eligible_patients p WHERE p.data_holder=u.data_holder AND (2025-EXTRACT(YEAR FROM p.birth_date)>=18 AND EXISTS (SELECT 1 FROM public.conditions c WHERE c.patient_id=p.patient_id AND c.icd10 LIKE 'N18%'))) AS n\nFROM universe u ORDER BY path;\n",
+  },
+  {
+    id: "J43",
+    request: requestJ43,
+    expected: expectedJ43 as JuryExpected,
+    sql:
+      "-- Independent reference authored from applicant definitions and the data model.\n-- Raw cells are for verification only; disclosure controls apply before release.\nSELECT ARRAY['hypertension_adults'] AS path, 'count' AS kind, count(DISTINCT p.patient_id)::text AS n\nFROM public.eligible_patients p WHERE 2025 - EXTRACT(YEAR FROM p.birth_date) >= 18 AND EXISTS (SELECT 1 FROM public.conditions c WHERE c.patient_id = p.patient_id AND c.icd10 LIKE 'I10%');\n",
+  },
+  {
+    id: "J44",
+    request: requestJ44,
+    expected: expectedJ44 as JuryExpected,
+    sql:
+      "-- Independent reference authored from applicant definitions and the data model.\n-- Raw cells are for verification only; disclosure controls apply before release.\nSELECT ARRAY['current_ace_users'] AS path, 'count' AS kind, count(DISTINCT p.patient_id)::text AS n\nFROM public.eligible_patients p WHERE EXISTS (SELECT 1 FROM public.medications m WHERE m.patient_id = p.patient_id AND m.atc LIKE 'C09AA%' AND m.start_date <= DATE '2025-12-31' AND (m.end_date IS NULL OR m.end_date >= DATE '2025-12-31'));\n",
+  },
+  {
+    id: "J45",
+    request: requestJ45,
+    expected: expectedJ45 as JuryExpected,
+    sql:
+      "-- Independent reference authored from applicant definitions and the data model.\n-- Raw cells are for verification only; disclosure controls apply before release.\nWITH latest AS (\n  SELECT p.patient_id, o.value FROM public.eligible_patients p\n  JOIN LATERAL (SELECT value FROM public.observations o\n    WHERE o.patient_id = p.patient_id AND o.loinc = '4548-4' AND o.date <= DATE '2025-12-31'\n    ORDER BY o.date DESC LIMIT 1) o ON true\n  WHERE 2025 - EXTRACT(YEAR FROM p.birth_date) >= 18 AND EXISTS (SELECT 1 FROM public.conditions c WHERE c.patient_id = p.patient_id AND c.icd10 LIKE 'E11%')\n)\nSELECT ARRAY['hba1c_measured'] AS path, 'count' AS kind, count(*)::text AS n, NULL::text AS total FROM latest\nUNION ALL\nSELECT ARRAY['hba1c_mean'], 'mean', count(value)::text, sum(value)::text FROM latest;\n",
+  },
+  {
+    id: "J46",
+    request: requestJ46,
+    expected: expectedJ46 as JuryExpected,
+    sql:
+      "-- Independent reference authored from applicant definitions and the data model.\n-- Raw cells are for verification only; disclosure controls apply before release.\nWITH latest AS (\n  SELECT p.patient_id, o.value FROM public.eligible_patients p\n  JOIN LATERAL (SELECT value FROM public.observations o\n    WHERE o.patient_id = p.patient_id AND o.loinc = '8480-6' AND o.date <= DATE '2025-12-31'\n    ORDER BY o.date DESC LIMIT 1) o ON true\n  WHERE 2025 - EXTRACT(YEAR FROM p.birth_date) >= 18 AND EXISTS (SELECT 1 FROM public.conditions c WHERE c.patient_id = p.patient_id AND c.icd10 LIKE 'I63%')\n)\nSELECT ARRAY['systolic_measured'] AS path, 'count' AS kind, count(*)::text AS n, NULL::text AS total FROM latest\nUNION ALL\nSELECT ARRAY['systolic_mean'], 'mean', count(value)::text, sum(value)::text FROM latest;\n",
+  },
+  {
+    id: "J47",
+    request: requestJ47,
+    expected: expectedJ47 as JuryExpected,
+    sql:
+      "-- Independent reference authored from applicant definitions and the data model.\n-- Raw cells are for verification only; disclosure controls apply before release.\nWITH hospitals AS (SELECT DISTINCT data_holder FROM public.eligible_patients WHERE data_holder IS NOT NULL)\nSELECT ARRAY[h.data_holder, 'copd_adults'] AS path, 'count' AS kind,\n  (SELECT count(DISTINCT p.patient_id)::text FROM public.eligible_patients p\n   WHERE p.data_holder = h.data_holder AND 2025 - EXTRACT(YEAR FROM p.birth_date) >= 18 AND EXISTS (SELECT 1 FROM public.conditions c WHERE c.patient_id = p.patient_id AND c.icd10 LIKE 'J44%')) AS n\nFROM hospitals h ORDER BY path;\n",
+  },
+  {
+    id: "J48",
+    request: requestJ48,
+    expected: expectedJ48 as JuryExpected,
+    sql:
+      "-- Independent reference authored from applicant definitions and the data model.\n-- Raw cells are for verification only; disclosure controls apply before release.\nWITH hospitals AS (SELECT DISTINCT data_holder FROM public.eligible_patients WHERE data_holder IS NOT NULL)\nSELECT ARRAY[h.data_holder, 'sglt2_users'] AS path, 'count' AS kind,\n  (SELECT count(DISTINCT p.patient_id)::text FROM public.eligible_patients p\n   WHERE p.data_holder = h.data_holder AND EXISTS (SELECT 1 FROM public.medications m WHERE m.patient_id = p.patient_id AND m.atc LIKE 'A10BK%' AND m.start_date <= DATE '2025-12-31' AND (m.end_date IS NULL OR m.end_date >= DATE '2025-12-31'))) AS n\nFROM hospitals h ORDER BY path;\n",
+  },
+  {
+    id: "J49",
+    request: requestJ49,
+    expected: expectedJ49 as JuryExpected,
+    sql:
+      "-- Independent reference authored from applicant definitions and the data model.\n-- Raw cells are for verification only; disclosure controls apply before release.\nWITH hospitals AS (SELECT DISTINCT data_holder FROM public.eligible_patients WHERE data_holder IS NOT NULL)\nSELECT ARRAY[h.data_holder, 'breast_cancer_women_50_69'] AS path, 'count' AS kind,\n  (SELECT count(DISTINCT p.patient_id)::text FROM public.eligible_patients p\n   WHERE p.data_holder = h.data_holder AND p.sex = 'female' AND 2025 - EXTRACT(YEAR FROM p.birth_date) BETWEEN 50 AND 69 AND EXISTS (SELECT 1 FROM public.conditions c WHERE c.patient_id = p.patient_id AND c.icd10 LIKE 'C50%')) AS n\nFROM hospitals h ORDER BY path;\n",
+  },
+  {
+    id: "J50",
+    request: requestJ50,
+    expected: expectedJ50 as JuryExpected,
+    sql:
+      "-- Independent reference authored from applicant definitions and the data model.\n-- Raw cells are for verification only; disclosure controls apply before release.\nSELECT ARRAY['pneumonia_stays_2023'] AS path, 'count' AS kind, count(DISTINCT e.encounter_id)::text AS n\nFROM public.eligible_patients p JOIN public.encounters e ON e.patient_id = p.patient_id\nWHERE e.type = 'inpatient' AND e.primary_icd10 LIKE 'J18%' AND e.start_date >= DATE '2023-01-01' AND e.start_date < DATE '2024-01-01';\n",
+  },
+  {
+    id: "J51",
+    request: requestJ51,
+    expected: expectedJ51 as JuryExpected,
+    sql:
+      "-- Independent reference authored from applicant definitions and the data model.\n-- Raw cells are for verification only; disclosure controls apply before release.\nWITH groups AS (SELECT DISTINCT data_holder AS grp FROM public.eligible_patients WHERE data_holder IS NOT NULL)\nSELECT ARRAY[g.grp, 'copd_stays_2024'] AS path, 'count' AS kind,\n (SELECT count(DISTINCT e.encounter_id)::text FROM public.eligible_patients p\n  JOIN public.encounters e ON e.patient_id = p.patient_id\n  WHERE e.data_holder = g.grp AND e.type = 'inpatient' AND e.primary_icd10 LIKE 'J44%' AND e.start_date >= DATE '2024-01-01' AND e.start_date < DATE '2025-01-01') AS n\nFROM groups g ORDER BY path;\n",
+  },
+  {
+    id: "J52",
+    request: requestJ52,
+    expected: expectedJ52 as JuryExpected,
+    sql:
+      "-- Independent reference authored from applicant definitions and the data model.\n-- Raw cells are for verification only; disclosure controls apply before release.\nWITH groups AS (SELECT DISTINCT region AS grp FROM public.eligible_patients WHERE region IS NOT NULL)\nSELECT ARRAY[g.grp, 'stroke_stays_2025'] AS path, 'count' AS kind,\n (SELECT count(DISTINCT e.encounter_id)::text FROM public.eligible_patients p\n  JOIN public.encounters e ON e.patient_id = p.patient_id\n  WHERE p.region = g.grp AND e.type = 'inpatient' AND e.primary_icd10 LIKE 'I63%' AND e.start_date >= DATE '2025-01-01' AND e.start_date < DATE '2026-01-01') AS n\nFROM groups g ORDER BY path;\n",
+  },
+  {
+    id: "J53",
+    request: requestJ53,
+    expected: expectedJ53 as JuryExpected,
+    sql:
+      "-- Independent reference authored from applicant definitions and the data model.\n-- Raw cells are for verification only; disclosure controls apply before release.\nSELECT ARRAY['hypertension_adults'] AS path, 'count' AS kind, count(DISTINCT p.patient_id)::text AS n\nFROM public.eligible_patients p WHERE 2025 - EXTRACT(YEAR FROM p.birth_date) >= 18 AND EXISTS (SELECT 1 FROM public.conditions c WHERE c.patient_id = p.patient_id AND c.icd10 LIKE 'I10%');\n",
+  },
+  {
+    id: "J54",
+    request: requestJ54,
+    expected: expectedJ54 as JuryExpected,
+    sql:
+      "-- Independent reference authored from applicant definitions and the data model.\n-- Raw cells are for verification only; disclosure controls apply before release.\nSELECT ARRAY['depression_adults'] AS path, 'count' AS kind, count(DISTINCT p.patient_id)::text AS n\nFROM public.eligible_patients p WHERE 2025 - EXTRACT(YEAR FROM p.birth_date) >= 18 AND EXISTS (SELECT 1 FROM public.conditions c WHERE c.patient_id = p.patient_id AND c.icd10 LIKE 'F32%');\n",
+  },
+  {
+    id: "J55",
+    request: requestJ55,
+    expected: expectedJ55 as JuryExpected,
+    sql:
+      "-- Independent reference authored from applicant definitions and the data model.\n-- Raw cells are for verification only; disclosure controls apply before release.\nSELECT p.patient_id FROM public.eligible_patients p WHERE 2025 - EXTRACT(YEAR FROM p.birth_date) >= 18 AND EXISTS (SELECT 1 FROM public.conditions c WHERE c.patient_id = p.patient_id AND c.icd10 LIKE 'I10%') AND EXISTS (SELECT 1 FROM public.observations o WHERE o.patient_id = p.patient_id AND o.loinc = '8480-6') ORDER BY p.patient_id;\n",
+  },
+  {
+    id: "J56",
+    request: requestJ56,
+    expected: expectedJ56 as JuryExpected,
+    sql:
+      "-- Independent reference authored from applicant definitions and the data model.\n-- Raw cells are for verification only; disclosure controls apply before release.\nSELECT ARRAY['cohort_size'] AS path, 'count' AS kind, count(DISTINCT p.patient_id)::text AS n\nFROM public.eligible_patients p WHERE 2025 - EXTRACT(YEAR FROM p.birth_date) >= 18 AND EXISTS (SELECT 1 FROM public.conditions c WHERE c.patient_id = p.patient_id AND c.icd10 LIKE 'I10%') AND EXISTS (SELECT 1 FROM public.observations o WHERE o.patient_id = p.patient_id AND o.loinc = '8480-6');\n",
+  },
+  {
+    id: "J57",
+    request: requestJ57,
+    expected: expectedJ57 as JuryExpected,
+    sql:
+      "-- Independent reference authored from applicant definitions and the data model.\n-- Raw cells are for verification only; disclosure controls apply before release.\nSELECT ARRAY['hypertension_adults'] AS path, 'count' AS kind, count(DISTINCT p.patient_id)::text AS n\nFROM public.eligible_patients p WHERE 2025 - EXTRACT(YEAR FROM p.birth_date) >= 18 AND EXISTS (SELECT 1 FROM public.conditions c WHERE c.patient_id = p.patient_id AND c.icd10 LIKE 'I10%');\n",
   },
 ];

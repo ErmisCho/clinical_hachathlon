@@ -1,0 +1,19 @@
+{
+  "id": "J57",
+  "submitted": "2026-10-30T10:00:00+01:00",
+  "applicant": {
+    "name": "Dr. Applicant 57",
+    "organisation": "Austrian Outcomes Study Group",
+    "country": "AT"
+  },
+  "requested_as": "health data request",
+  "requested_format": "anonymised statistics",
+  "purpose": "We are exploring a population insight service for a future partner. The partner has not yet told us whether the result will support care planning, an internal benchmark, or decisions about individual customers; the operational use and intended beneficiaries are still undecided.",
+  "question": "Please count adults with a recorded hypertension diagnosis, in total.",
+  "definitions": [
+    "Exclude patients who opted out of reuse.",
+    "Use 31 December 2025 as the reference date; age is 2025 minus birth year.",
+    "Hypertension means conditions.icd10 beginning I10; adult means at least 18 years.",
+    "Metric: hypertension_adults."
+  ]
+}

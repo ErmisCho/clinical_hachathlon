@@ -1,0 +1,20 @@
+{
+  "id": "J50",
+  "submitted": "2026-10-30T10:00:00+01:00",
+  "applicant": {
+    "name": "Dr. Applicant 50",
+    "organisation": "Austrian Outcomes Study Group",
+    "country": "AT"
+  },
+  "requested_as": "health data request",
+  "requested_format": "anonymised statistics",
+  "purpose": "Clinical research to improve prevention and health service planning.",
+  "question": "How many stationäre Aufenthalte began in 2023 with pneumonia as the Hauptdiagnose? Please total the stays across all hospitals, including repeat admissions of the same person.",
+  "definitions": [
+    "Exclude patients who opted out of reuse.",
+    "Use 31 December 2025 as the reference date; age is 2025 minus birth year.",
+    "Inpatient encounters only, start date in calendar year 2023.",
+    "Pneumonia means encounters.primary_icd10 beginning J18, regardless of conditions.csv.",
+    "Count distinct encounter_id, not patients; no grouping. Metric: pneumonia_stays_2023."
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "decision": "REJECT",
+  "articles": [
+    "54"
+  ],
+  "parse": "answer",
+  "rationale": "The wellbeing label disguises adverse lending decisions based on health data. Credit eligibility use is prohibited by Art. 54, even if the immediate output is aggregated."
+}

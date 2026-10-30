@@ -1,0 +1,10 @@
+{
+  "decision": "APPROVE_STATISTICAL",
+  "articles": [
+    "53",
+    "66",
+    "69"
+  ],
+  "parse": "answer",
+  "rationale": "Convenience does not establish necessity for individual records; the stated deliverable is a cohort count. Supply statistics under Art. 69 instead of record access."
+}

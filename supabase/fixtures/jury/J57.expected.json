@@ -1,0 +1,10 @@
+{
+  "decision": "APPROVE_STATISTICAL",
+  "articles": [
+    "53",
+    "69"
+  ],
+  "parse": "review",
+  "needs_review": true,
+  "rationale": "The statistical question is precise but the actual purpose remains undecided. Hold for human review and clarification under Arts. 53 and 69; do not infer a permitted purpose or release data."
+}

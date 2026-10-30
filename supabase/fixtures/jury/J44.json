@@ -1,0 +1,20 @@
+{
+  "id": "J44",
+  "submitted": "2026-10-30T10:00:00+01:00",
+  "applicant": {
+    "name": "Dr. Applicant 44",
+    "organisation": "Austrian Outcomes Study Group",
+    "country": "AT"
+  },
+  "requested_as": "health data request",
+  "requested_format": "anonymised statistics",
+  "purpose": "Clinical research to improve prevention and health service planning.",
+  "question": "For our medicines utilisation study, how many people were still prescribed an ACE inhibitor at the end of 2025? One overall number is enough.",
+  "definitions": [
+    "Exclude patients who opted out of reuse.",
+    "Use 31 December 2025 as the reference date; age is 2025 minus birth year.",
+    "ACE inhibitors are prescriptions with ATC beginning C09AA.",
+    "A prescription is current if it started on or before 31 December 2025 and its end date is blank or on or after that date.",
+    "Count distinct people of any age; metric: current_ace_users."
+  ]
+}

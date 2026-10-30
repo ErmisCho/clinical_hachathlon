@@ -1,0 +1,19 @@
+{
+  "id": "J43",
+  "submitted": "2026-10-30T10:00:00+01:00",
+  "applicant": {
+    "name": "Dr. Applicant 43",
+    "organisation": "Austrian Outcomes Study Group",
+    "country": "AT"
+  },
+  "requested_as": "health data request",
+  "requested_format": "anonymised statistics",
+  "purpose": "Clinical research to improve prevention and health service planning.",
+  "question": "Could you give us a single headcount of adults living with Bluthochdruck? We mean a recorded hypertension diagnosis, not just one high reading, and do not need a regional breakdown.",
+  "definitions": [
+    "Exclude patients who opted out of reuse.",
+    "Use 31 December 2025 as the reference date; age is 2025 minus birth year.",
+    "Hypertension means a conditions.icd10 code beginning I10.",
+    "Count each adult (18 years or older) once; metric: hypertension_adults."
+  ]
+}

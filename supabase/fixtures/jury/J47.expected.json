@@ -1,0 +1,9 @@
+{
+  "decision": "APPROVE_STATISTICAL",
+  "articles": [
+    "53",
+    "69"
+  ],
+  "parse": "answer",
+  "rationale": "Health research is permitted under Art. 53; anonymous aggregate results satisfy this request under Art. 69."
+}

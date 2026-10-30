@@ -1,0 +1,19 @@
+{
+  "id": "J47",
+  "submitted": "2026-10-30T10:00:00+01:00",
+  "applicant": {
+    "name": "Dr. Applicant 47",
+    "organisation": "Austrian Outcomes Study Group",
+    "country": "AT"
+  },
+  "requested_as": "health data request",
+  "requested_format": "anonymised statistics",
+  "purpose": "Clinical research to improve prevention and health service planning.",
+  "question": "For each Krankenhaus, how many adults have COPD on their diagnosis list? We are comparing the three record-holding hospitals rather than where people live.",
+  "definitions": [
+    "Exclude patients who opted out of reuse.",
+    "Use 31 December 2025 as the reference date; age is 2025 minus birth year.",
+    "COPD means a condition ICD-10 code beginning J44.",
+    "Group by patients.data_holder, include all hospitals, and count each adult once; metric: copd_adults."
+  ]
+}

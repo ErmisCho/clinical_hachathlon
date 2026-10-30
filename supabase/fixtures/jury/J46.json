@@ -1,0 +1,20 @@
+{
+  "id": "J46",
+  "submitted": "2026-10-30T10:00:00+01:00",
+  "applicant": {
+    "name": "Dr. Applicant 46",
+    "organisation": "Austrian Outcomes Study Group",
+    "country": "AT"
+  },
+  "requested_as": "health data request",
+  "requested_format": "anonymised statistics",
+  "purpose": "Clinical research to improve prevention and health service planning.",
+  "question": "We need the mean latest systolic pressure, in millimetres of mercury, for adults with a recorded stroke, plus the number measured; please do not substitute the diastolic reading.",
+  "definitions": [
+    "Exclude patients who opted out of reuse.",
+    "Use 31 December 2025 as the reference date; age is 2025 minus birth year.",
+    "Stroke means a condition code beginning I63.",
+    "Use each adult’s latest observation through 31 December 2025 with LOINC 8480-6.",
+    "No grouping; mean to one decimal. Metrics: systolic_measured and systolic_mean."
+  ]
+}

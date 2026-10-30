@@ -1,0 +1,20 @@
+{
+  "decision": "APPROVE_SPE",
+  "articles": [
+    "53",
+    "66",
+    "68",
+    "73"
+  ],
+  "parse": "answer",
+  "rationale": "Repeated linked records are necessary to estimate within-person trajectories. Approve only a secure processing environment with the specified cohort and tables.",
+  "spe": {
+    "tables": [
+      "conditions",
+      "observations"
+    ],
+    "loincs": [
+      "8480-6"
+    ]
+  }
+}

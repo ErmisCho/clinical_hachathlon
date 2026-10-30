@@ -1,0 +1,20 @@
+{
+  "id": "J48",
+  "submitted": "2026-10-30T10:00:00+01:00",
+  "applicant": {
+    "name": "Dr. Applicant 48",
+    "organisation": "Austrian Outcomes Study Group",
+    "country": "AT"
+  },
+  "requested_as": "health data request",
+  "requested_format": "anonymised statistics",
+  "purpose": "Clinical research to improve prevention and health service planning.",
+  "question": "Please send one anonymous count per data holder of people currently receiving an SGLT2 inhibitor; a person with several prescriptions should still contribute only once.",
+  "definitions": [
+    "Exclude patients who opted out of reuse.",
+    "Use 31 December 2025 as the reference date; age is 2025 minus birth year.",
+    "SGLT2 inhibitor means ATC beginning A10BK.",
+    "A prescription is current if it started on or before 31 December 2025 and its end date is blank or on or after that date.",
+    "All ages, grouped by patients.data_holder; metric: sglt2_users."
+  ]
+}

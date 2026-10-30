@@ -1,0 +1,20 @@
+{
+  "id": "J56",
+  "submitted": "2026-10-30T10:00:00+01:00",
+  "applicant": {
+    "name": "Dr. Applicant 56",
+    "organisation": "Austrian Outcomes Study Group",
+    "country": "AT"
+  },
+  "requested_as": "health data access application",
+  "requested_format": "pseudonymised records",
+  "purpose": "Clinical research for hypertension service planning. We would prefer individual-level records for convenience; our deliverable is a single cohort count and we provide no methodological need for linked records.",
+  "question": "Could we get individual diagnosis histories and systolic readings for the adult hypertension cohort? We prefer to make the spreadsheet ourselves, although our deliverable only needs the cohort headcount.",
+  "definitions": [
+    "Exclude patients who opted out of reuse.",
+    "Use 31 December 2025 as the reference date; age is 2025 minus birth year.",
+    "Cohort: adults aged at least 18 with a conditions.icd10 code beginning I10 and at least one systolic blood pressure observation (LOINC 8480-6).",
+    "Requested tables: conditions and observations, restricting observations to LOINC 8480-6; retain pseudonymous patient linkage only.",
+    "If aggregate access suffices, report the single metric cohort_size."
+  ]
+}
