@@ -1,8 +1,9 @@
 /**
- * watsonx.ai fallback for the rule-based parser — Issue #15 (EHDS Track 3)
+ * LLM fallback for the rule-based parser — Issue #15, provider switched in #94
  *
- * Only active when WATSONX_API_KEY, WATSONX_PROJECT_ID and WATSONX_URL are
- * all set in the function environment.  When disabled every exported function
+ * Calls an OpenAI-compatible /chat/completions endpoint (default: OpenRouter,
+ * Mistral Small 3.2, an EU provider).  Only active when OPENROUTER_API_KEY is
+ * set in the function environment.  When disabled every exported function
  * is a no-op and the app behaves exactly as before.
  *
  * Safety contract (agreed 2026-10-30):
@@ -47,50 +48,52 @@ export interface FallbackResult {
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-/** True when all three watsonx credentials are present in Deno.env. */
+/** Endpoint settings, or null when OPENROUTER_API_KEY is absent (AI features off). */
+export function llmConfig(): { apiKey: string; baseUrl: string; model: string } | null {
+  const apiKey = Deno.env.get("OPENROUTER_API_KEY");
+  if (!apiKey) return null;
+  return {
+    apiKey,
+    baseUrl: (Deno.env.get("LLM_BASE_URL") || "https://openrouter.ai/api/v1").replace(/\/$/, ""),
+    model: Deno.env.get("LLM_MODEL") || "mistralai/mistral-small-3.2-24b-instruct",
+  };
+}
+
+/** True when the LLM endpoint is configured. */
 export function isEnabled(): boolean {
-  return !!(
-    Deno.env.get("WATSONX_API_KEY") &&
-    Deno.env.get("WATSONX_PROJECT_ID") &&
-    Deno.env.get("WATSONX_URL")
-  );
+  return llmConfig() !== null;
 }
 
-/** Derive the (short) model identifier for audit. */
-function modelId(url: string): string {
-  // e.g. "ibm/granite-13b-instruct-v2" from WATSONX_URL parameter if embedded;
-  // otherwise a sensible default.
-  return "ibm/granite-13b-instruct-v2";
-}
-
-// IAM token cache — one token per process lifetime is enough for edge functions.
-let _cachedToken: { token: string; expiry: number } | null = null;
-
-async function getIamToken(apiKey: string): Promise<string> {
-  const now = Date.now();
-  if (_cachedToken && _cachedToken.expiry > now + 60_000) {
-    return _cachedToken.token;
-  }
-  const body = new URLSearchParams({
-    grant_type: "urn:ibm:params:oauth:grant-type:apikey",
-    apikey: apiKey,
-  });
-  const res = await fetch("https://iam.cloud.ibm.com/identity/token", {
+/** One deterministic chat completion; throws on any HTTP or shape error. */
+export async function chatComplete(
+  prompt: string,
+  maxTokens: number,
+  timeoutMs: number,
+): Promise<string> {
+  const cfg = llmConfig();
+  if (!cfg) throw new Error("LLM disabled");
+  const res = await fetch(`${cfg.baseUrl}/chat/completions`, {
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: body.toString(),
-    signal: AbortSignal.timeout(8000),
+    headers: {
+      "Authorization": `Bearer ${cfg.apiKey}`,
+      "Content-Type": "application/json",
+      "X-Title": "EHDS Access Desk",
+    },
+    body: JSON.stringify({
+      model: cfg.model,
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0,
+      max_tokens: maxTokens,
+    }),
+    signal: AbortSignal.timeout(timeoutMs),
   });
-  if (!res.ok) throw new Error(`IAM token request failed: ${res.status}`);
+  if (!res.ok) throw new Error(`LLM request failed: ${res.status}`);
   const data = await res.json() as {
-    access_token: string;
-    expires_in: number;
+    choices?: { message?: { content?: unknown } }[];
   };
-  _cachedToken = {
-    token: data.access_token,
-    expiry: now + (data.expires_in ?? 3600) * 1000,
-  };
-  return data.access_token;
+  const text = data.choices?.[0]?.message?.content;
+  if (typeof text !== "string") throw new Error("Unexpected LLM response shape");
+  return text.trim();
 }
 
 // ---------------------------------------------------------------------------
@@ -206,47 +209,6 @@ async function writeCache(
 }
 
 // ---------------------------------------------------------------------------
-// Core: call watsonx.ai text/generation endpoint
-// ---------------------------------------------------------------------------
-
-async function callWatsonx(
-  prompt: string,
-  apiKey: string,
-  projectId: string,
-  baseUrl: string,
-): Promise<string> {
-  const token = await getIamToken(apiKey);
-  const url =
-    `${baseUrl.replace(/\/$/, "")}/ml/v1/text/generation?version=2024-05-01`;
-  const payload = {
-    model_id: "ibm/granite-13b-instruct-v2",
-    project_id: projectId,
-    input: prompt,
-    parameters: {
-      decoding_method: "greedy",
-      temperature: 0,
-      max_new_tokens: 512,
-    },
-  };
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(payload),
-    signal: AbortSignal.timeout(8000),
-  });
-  if (!res.ok) throw new Error(`watsonx generation failed: ${res.status}`);
-  const data = await res.json() as {
-    results?: { generated_text: string }[];
-  };
-  const text = data.results?.[0]?.generated_text;
-  if (typeof text !== "string") throw new Error("Unexpected watsonx response shape");
-  return text.trim();
-}
-
-// ---------------------------------------------------------------------------
 // Parse LLM response into an array of rewrite strings
 // ---------------------------------------------------------------------------
 
@@ -274,7 +236,7 @@ function parseGeneratedRewrites(
 // ---------------------------------------------------------------------------
 
 /**
- * Attempt a watsonx-assisted re-parse of a request whose rule-based parse
+ * Attempt an LLM-assisted re-parse of a request whose rule-based parse
  * failed.  Returns null when:
  *   - the module is disabled (no credentials)
  *   - all definition errors come from structural issues, not unparseable text
@@ -290,10 +252,7 @@ export async function attemptFallback(
 ): Promise<FallbackResult | null> {
   if (!isEnabled()) return null;
 
-  const apiKey = Deno.env.get("WATSONX_API_KEY")!;
-  const projectId = Deno.env.get("WATSONX_PROJECT_ID")!;
-  const baseUrl = Deno.env.get("WATSONX_URL")!;
-  const model = modelId(baseUrl);
+  const model = llmConfig()!.model;
 
   // Only rewrite concept definitions (those that name a new term) that the
   // grammar does not recognise.  Cascaded errors on report/count clauses are
@@ -338,11 +297,11 @@ export async function attemptFallback(
     }
   }
 
-  // Call watsonx
+  // Call the LLM
   let rewriteStrings: string[];
   try {
     const prompt = buildPrompt(question, failingDefs);
-    const generated = await callWatsonx(prompt, apiKey, projectId, baseUrl);
+    const generated = await chatComplete(prompt, 512, 12000);
     const parsed = parseGeneratedRewrites(generated, failingDefs.length);
     if (!parsed) return null;
     rewriteStrings = parsed;
@@ -397,5 +356,4 @@ function applyRewrites(
 /** Exposed for testing: reset in-memory cache between test cases. */
 export function _resetMemCache(): void {
   _memCache.clear();
-  _cachedToken = null;
 }

@@ -1,7 +1,7 @@
 /**
  * Tests for llm_fallback.ts — Issue #15 (EHDS Track 3)
  *
- * All tests run without real watsonx credentials.  Network calls are replaced
+ * All tests run without real LLM key.  Network calls are replaced
  * by a controlled fake fetch (using Deno stub patterns).
  *
  * Covered:
@@ -11,12 +11,13 @@
  *   4.  an invalid LLM rewrite (still unparseable) is ignored, null returned
  *   5.  cache hit makes no second fetch call
  *   6.  AI-assisted results are always held (pipeline test)
- *   7.  payload sent to watsonx contains only definitions + question, not patient data
+ *   7.  payload sent to the LLM contains only definitions + question, not patient data
  */
 
 import {
   _resetMemCache,
   attemptFallback,
+  chatComplete,
   isEnabled,
 } from "./llm_fallback.ts";
 import { parseRequest } from "./parser.ts";
@@ -56,19 +57,12 @@ async function withFakeFetch<T>(
   }
 }
 
-/** Fake IAM token response. */
-function fakeIam(): Response {
-  return new Response(
-    JSON.stringify({ access_token: "test-token", expires_in: 3600 }),
-    { status: 200, headers: { "Content-Type": "application/json" } },
-  );
-}
 
-/** Fake watsonx text/generation response returning a JSON array of strings. */
+/** Fake chat/completions response returning a JSON array of strings. */
 function fakeGeneration(rewrites: string[]): Response {
   return new Response(
     JSON.stringify({
-      results: [{ generated_text: JSON.stringify(rewrites) }],
+      choices: [{ message: { content: JSON.stringify(rewrites) } }],
     }),
     { status: 200, headers: { "Content-Type": "application/json" } },
   );
@@ -80,13 +74,11 @@ function fakeGeneration(rewrites: string[]): Response {
 
 Deno.test("disabled without env vars: isEnabled() is false, attemptFallback returns null without fetch", async () => {
   // Ensure env vars are NOT set (they shouldn't be in CI without credentials).
-  const hasKey = !!Deno.env.get("WATSONX_API_KEY");
-  const hasProjId = !!Deno.env.get("WATSONX_PROJECT_ID");
-  const hasUrl = !!Deno.env.get("WATSONX_URL");
+  const hasKey = !!Deno.env.get("OPENROUTER_API_KEY");
 
-  if (hasKey && hasProjId && hasUrl) {
+  if (hasKey) {
     // Cannot test disabled path when credentials ARE set; skip.
-    console.log("  [skip] watsonx credentials present — disabled test skipped");
+    console.log("  [skip] LLM key present — disabled test skipped");
     return;
   }
 
@@ -151,15 +143,11 @@ Deno.test("R01-R10 never call the LLM: all fixtures parse cleanly", async () => 
 
 Deno.test("failing definition gets rewritten and validated", async () => {
   // Only run this test when credentials are present OR by force-setting env vars.
-  // We mock fetch to simulate watsonx, but attemptFallback gates on isEnabled().
+  // We mock fetch to simulate the LLM, but attemptFallback gates on isEnabled().
   // So we temporarily set env vars for this test.
-  const originalKey = Deno.env.get("WATSONX_API_KEY");
-  const originalProjId = Deno.env.get("WATSONX_PROJECT_ID");
-  const originalUrl = Deno.env.get("WATSONX_URL");
+  const originalKey = Deno.env.get("OPENROUTER_API_KEY");
 
-  Deno.env.set("WATSONX_API_KEY", "test-key");
-  Deno.env.set("WATSONX_PROJECT_ID", "test-project");
-  Deno.env.set("WATSONX_URL", "https://eu-de.ml.cloud.ibm.com");
+  Deno.env.set("OPENROUTER_API_KEY", "test-key");
   _resetMemCache();
 
   try {
@@ -185,8 +173,7 @@ Deno.test("failing definition gets rewritten and validated", async () => {
       (url, init) => {
         fetchCallCount++;
         capturedPayloads.push(String(init.body ?? ""));
-        if (url.includes("iam.cloud.ibm.com")) return fakeIam();
-        // watsonx: rewrite to canonical form
+        // the LLM: rewrite to canonical form
         return fakeGeneration([rewrittenDef]);
       },
       () => attemptFallback(request, errors, undefined),
@@ -212,13 +199,13 @@ Deno.test("failing definition gets rewritten and validated", async () => {
       result!.ai_assist.rewritten[0].rewritten === rewrittenDef,
       "rewritten must match the LLM output",
     );
-    assert(fetchCallCount === 2, "must call IAM + watsonx exactly once each");
+    assert(fetchCallCount === 1, "must call the LLM exactly once");
 
     // Verify payload contains only definitions + question, not patient data
-    const genPayload = capturedPayloads.find((p) => p.includes("model_id"));
+    const genPayload = capturedPayloads.find((p) => p.includes("messages"));
     assert(genPayload !== undefined, "must have a generation payload");
     const genParsed = JSON.parse(genPayload);
-    const promptText = typeof genParsed.input === "string" ? genParsed.input : "";
+    const promptText = typeof genParsed.messages?.[0]?.content === "string" ? genParsed.messages[0].content : "";
     assert(!promptText.includes("applicant"), "no 'applicant' key in prompt");
     assert(!promptText.includes("patient_id"), "no patient_id in prompt");
     assert(
@@ -231,13 +218,8 @@ Deno.test("failing definition gets rewritten and validated", async () => {
     );
   } finally {
     // Restore env (set back to original or delete)
-    if (originalKey !== undefined) Deno.env.set("WATSONX_API_KEY", originalKey);
-    else Deno.env.delete("WATSONX_API_KEY");
-    if (originalProjId !== undefined) {
-      Deno.env.set("WATSONX_PROJECT_ID", originalProjId);
-    } else Deno.env.delete("WATSONX_PROJECT_ID");
-    if (originalUrl !== undefined) Deno.env.set("WATSONX_URL", originalUrl);
-    else Deno.env.delete("WATSONX_URL");
+    if (originalKey !== undefined) Deno.env.set("OPENROUTER_API_KEY", originalKey);
+    else Deno.env.delete("OPENROUTER_API_KEY");
     _resetMemCache();
   }
 });
@@ -247,13 +229,9 @@ Deno.test("failing definition gets rewritten and validated", async () => {
 // ---------------------------------------------------------------------------
 
 Deno.test("invalid LLM rewrite (still unparseable) is ignored, null returned", async () => {
-  const originalKey = Deno.env.get("WATSONX_API_KEY");
-  const originalProjId = Deno.env.get("WATSONX_PROJECT_ID");
-  const originalUrl = Deno.env.get("WATSONX_URL");
+  const originalKey = Deno.env.get("OPENROUTER_API_KEY");
 
-  Deno.env.set("WATSONX_API_KEY", "test-key");
-  Deno.env.set("WATSONX_PROJECT_ID", "test-project");
-  Deno.env.set("WATSONX_URL", "https://eu-de.ml.cloud.ibm.com");
+  Deno.env.set("OPENROUTER_API_KEY", "test-key");
   _resetMemCache();
 
   try {
@@ -273,7 +251,6 @@ Deno.test("invalid LLM rewrite (still unparseable) is ignored, null returned", a
 
     const result = await withFakeFetch(
       (url) => {
-        if (url.includes("iam.cloud.ibm.com")) return fakeIam();
         return fakeGeneration([badRewrite]);
       },
       () => attemptFallback(request, errors, undefined),
@@ -284,13 +261,8 @@ Deno.test("invalid LLM rewrite (still unparseable) is ignored, null returned", a
       "must return null when LLM rewrite still fails to parse",
     );
   } finally {
-    if (originalKey !== undefined) Deno.env.set("WATSONX_API_KEY", originalKey);
-    else Deno.env.delete("WATSONX_API_KEY");
-    if (originalProjId !== undefined) {
-      Deno.env.set("WATSONX_PROJECT_ID", originalProjId);
-    } else Deno.env.delete("WATSONX_PROJECT_ID");
-    if (originalUrl !== undefined) Deno.env.set("WATSONX_URL", originalUrl);
-    else Deno.env.delete("WATSONX_URL");
+    if (originalKey !== undefined) Deno.env.set("OPENROUTER_API_KEY", originalKey);
+    else Deno.env.delete("OPENROUTER_API_KEY");
     _resetMemCache();
   }
 });
@@ -300,13 +272,9 @@ Deno.test("invalid LLM rewrite (still unparseable) is ignored, null returned", a
 // ---------------------------------------------------------------------------
 
 Deno.test("cache hit makes no second fetch call", async () => {
-  const originalKey = Deno.env.get("WATSONX_API_KEY");
-  const originalProjId = Deno.env.get("WATSONX_PROJECT_ID");
-  const originalUrl = Deno.env.get("WATSONX_URL");
+  const originalKey = Deno.env.get("OPENROUTER_API_KEY");
 
-  Deno.env.set("WATSONX_API_KEY", "test-key");
-  Deno.env.set("WATSONX_PROJECT_ID", "test-project");
-  Deno.env.set("WATSONX_URL", "https://eu-de.ml.cloud.ibm.com");
+  Deno.env.set("OPENROUTER_API_KEY", "test-key");
   _resetMemCache();
 
   try {
@@ -327,11 +295,10 @@ Deno.test("cache hit makes no second fetch call", async () => {
 
     const makeResponse = (url: string) => {
       fetchCallCount++;
-      if (url.includes("iam.cloud.ibm.com")) return fakeIam();
       return fakeGeneration([rewrittenDef]);
     };
 
-    // First call — should hit watsonx
+    // First call — should hit the LLM
     const result1 = await withFakeFetch(makeResponse, () =>
       attemptFallback(request, errors, undefined));
     assert(result1 !== null && result1.parsed.ok, "first call must succeed");
@@ -351,13 +318,8 @@ Deno.test("cache hit makes no second fetch call", async () => {
       "ai_assist.used must still be true on cache hit",
     );
   } finally {
-    if (originalKey !== undefined) Deno.env.set("WATSONX_API_KEY", originalKey);
-    else Deno.env.delete("WATSONX_API_KEY");
-    if (originalProjId !== undefined) {
-      Deno.env.set("WATSONX_PROJECT_ID", originalProjId);
-    } else Deno.env.delete("WATSONX_PROJECT_ID");
-    if (originalUrl !== undefined) Deno.env.set("WATSONX_URL", originalUrl);
-    else Deno.env.delete("WATSONX_URL");
+    if (originalKey !== undefined) Deno.env.set("OPENROUTER_API_KEY", originalKey);
+    else Deno.env.delete("OPENROUTER_API_KEY");
     _resetMemCache();
   }
 });
@@ -370,13 +332,9 @@ Deno.test("AI-assisted results are always held: needs_review true, answer null",
   // Import pipeline here to keep test self-contained.
   const { answerRequest } = await import("./pipeline.ts");
 
-  const originalKey = Deno.env.get("WATSONX_API_KEY");
-  const originalProjId = Deno.env.get("WATSONX_PROJECT_ID");
-  const originalUrl = Deno.env.get("WATSONX_URL");
+  const originalKey = Deno.env.get("OPENROUTER_API_KEY");
 
-  Deno.env.set("WATSONX_API_KEY", "test-key");
-  Deno.env.set("WATSONX_PROJECT_ID", "test-project");
-  Deno.env.set("WATSONX_URL", "https://eu-de.ml.cloud.ibm.com");
+  Deno.env.set("OPENROUTER_API_KEY", "test-key");
   _resetMemCache();
 
   const failingDef = "Senior = patients who are 65 years old or more as of December 31 2025";
@@ -418,7 +376,6 @@ Deno.test("AI-assisted results are always held: needs_review true, answer null",
   try {
     const result = await withFakeFetch(
       (url) => {
-        if (url.includes("iam.cloud.ibm.com")) return fakeIam();
         return fakeGeneration([rewrittenDef]);
       },
       () =>
@@ -454,13 +411,8 @@ Deno.test("AI-assisted results are always held: needs_review true, answer null",
       "ai_assist.rewritten must be non-empty",
     );
   } finally {
-    if (originalKey !== undefined) Deno.env.set("WATSONX_API_KEY", originalKey);
-    else Deno.env.delete("WATSONX_API_KEY");
-    if (originalProjId !== undefined) {
-      Deno.env.set("WATSONX_PROJECT_ID", originalProjId);
-    } else Deno.env.delete("WATSONX_PROJECT_ID");
-    if (originalUrl !== undefined) Deno.env.set("WATSONX_URL", originalUrl);
-    else Deno.env.delete("WATSONX_URL");
+    if (originalKey !== undefined) Deno.env.set("OPENROUTER_API_KEY", originalKey);
+    else Deno.env.delete("OPENROUTER_API_KEY");
     _resetMemCache();
   }
 });
@@ -470,13 +422,9 @@ Deno.test("AI-assisted results are always held: needs_review true, answer null",
 // ---------------------------------------------------------------------------
 
 Deno.test("payload contains only definitions + question, no patient data", async () => {
-  const originalKey = Deno.env.get("WATSONX_API_KEY");
-  const originalProjId = Deno.env.get("WATSONX_PROJECT_ID");
-  const originalUrl = Deno.env.get("WATSONX_URL");
+  const originalKey = Deno.env.get("OPENROUTER_API_KEY");
 
-  Deno.env.set("WATSONX_API_KEY", "test-key");
-  Deno.env.set("WATSONX_PROJECT_ID", "test-project");
-  Deno.env.set("WATSONX_URL", "https://eu-de.ml.cloud.ibm.com");
+  Deno.env.set("OPENROUTER_API_KEY", "test-key");
   _resetMemCache();
 
   try {
@@ -487,7 +435,7 @@ Deno.test("payload contains only definitions + question, no patient data", async
       id: "T-LLM-7",
       question: "Count seniors?",
       definitions: [failingDef, "Report per region: senior."],
-      // Fields that must NEVER reach watsonx
+      // Fields that must NEVER reach the LLM
       applicant: {
         name: "Dr. Secret Name",
         organisation: "Sensitive Org",
@@ -502,10 +450,9 @@ Deno.test("payload contains only definitions + question, no patient data", async
 
     await withFakeFetch(
       (url, init) => {
-        if (!url.includes("iam.cloud.ibm.com")) {
+        {
           capturedBodies.push(String(init.body ?? ""));
         }
-        if (url.includes("iam.cloud.ibm.com")) return fakeIam();
         return fakeGeneration([rewrittenDef]);
       },
       () => attemptFallback(requestWithSensitiveData, errors, undefined),
@@ -514,7 +461,7 @@ Deno.test("payload contains only definitions + question, no patient data", async
     assert(capturedBodies.length > 0, "must have at least one generation call");
     for (const body of capturedBodies) {
       const parsed = JSON.parse(body);
-      const promptText = typeof parsed.input === "string" ? parsed.input : "";
+      const promptText = typeof parsed.messages?.[0]?.content === "string" ? parsed.messages[0].content : "";
 
       // Sensitive fields must not appear in the prompt
       assert(
@@ -545,13 +492,38 @@ Deno.test("payload contains only definitions + question, no patient data", async
       );
     }
   } finally {
-    if (originalKey !== undefined) Deno.env.set("WATSONX_API_KEY", originalKey);
-    else Deno.env.delete("WATSONX_API_KEY");
-    if (originalProjId !== undefined) {
-      Deno.env.set("WATSONX_PROJECT_ID", originalProjId);
-    } else Deno.env.delete("WATSONX_PROJECT_ID");
-    if (originalUrl !== undefined) Deno.env.set("WATSONX_URL", originalUrl);
-    else Deno.env.delete("WATSONX_URL");
+    if (originalKey !== undefined) Deno.env.set("OPENROUTER_API_KEY", originalKey);
+    else Deno.env.delete("OPENROUTER_API_KEY");
     _resetMemCache();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Transport: OpenAI-compatible request to OpenRouter with the EU default model
+// ---------------------------------------------------------------------------
+
+Deno.test("chatComplete posts to OpenRouter chat/completions with key and default model", async () => {
+  const saved = ["OPENROUTER_API_KEY", "LLM_BASE_URL", "LLM_MODEL"].map((k) => [k, Deno.env.get(k)] as const);
+  Deno.env.set("OPENROUTER_API_KEY", "test-key");
+  Deno.env.delete("LLM_BASE_URL");
+  Deno.env.delete("LLM_MODEL");
+  const original = globalThis.fetch;
+  let seen: { url: string; init: RequestInit } | undefined;
+  (globalThis as unknown as Record<string, unknown>)["fetch"] = (url: string, init: RequestInit) => {
+    seen = { url: String(url), init };
+    return Promise.resolve(new Response(JSON.stringify({ choices: [{ message: { content: " ok " } }] })));
+  };
+  try {
+    const text = await chatComplete("hello", 10, 1000);
+    assert(text === "ok", "returns the trimmed message content");
+    assert(seen!.url === "https://openrouter.ai/api/v1/chat/completions", `url was ${seen!.url}`);
+    const headers = seen!.init.headers as Record<string, string>;
+    assert(headers["Authorization"] === "Bearer test-key", "bearer key sent");
+    const body = JSON.parse(String(seen!.init.body));
+    assert(body.model === "mistralai/mistral-small-3.2-24b-instruct", `model was ${body.model}`);
+    assert(body.temperature === 0 && body.messages[0].content === "hello", "deterministic single user message");
+  } finally {
+    (globalThis as unknown as Record<string, unknown>)["fetch"] = original;
+    for (const [k, v] of saved) v === undefined ? Deno.env.delete(k) : Deno.env.set(k, v);
   }
 });

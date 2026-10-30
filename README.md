@@ -70,10 +70,12 @@ review and retrieval expose the lifecycle timeline. Postgres holds `patients`,
 **Models and services:** no LLM decides or computes. Decisions use deterministic
 rules; answers use SQL. Services are Supabase (Postgres + Edge Functions;
 deployment region `eu-west-1`), Lovable hosting and GitHub Actions CI.
-The watsonx parser fallback (`supabase/functions/_shared/llm_fallback.ts`) and
-reasoning memo (`supabase/functions/_shared/memo.ts`) are implemented, but disabled
-unless all three credentials are set: `WATSONX_API_KEY`, `WATSONX_PROJECT_ID`,
-`WATSONX_URL`. AI-assisted plans are always held for staff review; a memo is
+The LLM parser fallback (`supabase/functions/_shared/llm_fallback.ts`) and
+reasoning memo (`supabase/functions/_shared/memo.ts`) call an OpenAI-compatible
+endpoint: the hackathon's OpenRouter pool with Mistral Small 3.2 (an EU provider,
+zero data retention). They are off unless `OPENROUTER_API_KEY` is set; optional
+`LLM_BASE_URL` (default `https://openrouter.ai/api/v1`) and `LLM_MODEL` (default
+`mistralai/mistral-small-3.2-24b-instruct`) point them elsewhere. AI-assisted plans are always held for staff review; a memo is
 returned for display only when every quotation verifies against stored legal
 text. Neither feature sends patient data or database answers to the model.
 Every pipeline response and saved decision carries `rule_id` and `rules_version`
@@ -137,7 +139,7 @@ The frontend runs from its separate repository.
 | `supabase/functions/_shared/` | Decision, parser, plan validation, SQL, SPE and explanations |
 | `supabase/functions/_shared/rules/decision_rules.json` | Decision rules version 1.0.2 |
 | `supabase/functions/_shared/hdab/hdab_configs.json` | Per-access-body configuration and national rule examples |
-| `supabase/functions/_shared/llm_fallback.ts`, `supabase/functions/_shared/memo.ts` | Optional watsonx parser fallback and verified-quote memo |
+| `supabase/functions/_shared/llm_fallback.ts`, `supabase/functions/_shared/memo.ts` | Optional LLM parser fallback and verified-quote memo |
 | `supabase/functions/_shared/regulation/reg_2025_327.json` | Stored legal paragraphs |
 | `supabase/migrations/` | Data schema, privacy boundaries and audit tables |
 | `supabase/fixtures/` | Query plans and unseen/jury requests with reference SQL |

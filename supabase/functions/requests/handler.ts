@@ -325,7 +325,7 @@ export interface PreviewResponse {
   plan_summary?: string;
   /** definitions that could not be parsed: [{index, definition, reason}] */
   unreadable: { index: number; definition: string; reason: string }[];
-  /** Present when the watsonx fallback was used (Issue #15). */
+  /** Present when the LLM fallback was used (Issue #15). */
   ai_assist?: AiAssist;
 }
 
@@ -355,7 +355,7 @@ async function handlePreview(
   const unreadable: { index: number; definition: string; reason: string }[] =
     [];
   if (!parsed.ok) {
-    // Attempt watsonx fallback (in-memory cache only; no SQL in preview).
+    // Attempt LLM fallback (in-memory cache only; no SQL in preview).
     const fallback = await attemptFallback(req, parsed.errors, undefined);
     if (fallback) {
       parsed = fallback.parsed;

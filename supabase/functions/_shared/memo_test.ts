@@ -1,7 +1,7 @@
 /**
  * Tests for memo.ts — Issue #35 (EHDS Track 3)
  *
- * No real watsonx credentials required.  Network calls are replaced by a
+ * No real LLM key required.  Network calls are replaced by a
  * controlled fake fetch.
  *
  * Covered:
@@ -9,7 +9,7 @@
  *   2. fabricated quote → memo dropped, memo_status "rejected_unverified_quote"
  *   3. verified memo returned: memo_status "ok", quotes annotated
  *   4. decision and articles unchanged in pipeline response
- *   5. payload sent to watsonx contains no answer/patient data
+ *   5. payload sent to the LLM contains no answer/patient data
  *   6. cache: second call for same key makes no additional fetch call
  */
 
@@ -45,16 +45,10 @@ async function withFakeFetch<T>(
   }
 }
 
-function fakeIam(): Response {
-  return new Response(
-    JSON.stringify({ access_token: "test-token", expires_in: 3600 }),
-    { status: 200, headers: { "Content-Type": "application/json" } },
-  );
-}
 
 function fakeGeneration(text: string): Response {
   return new Response(
-    JSON.stringify({ results: [{ generated_text: text }] }),
+    JSON.stringify({ choices: [{ message: { content: text } }] }),
     { status: 200, headers: { "Content-Type": "application/json" } },
   );
 }
@@ -71,12 +65,10 @@ const REAL_QUOTE_54 = "carrying out advertising or marketing activities";
 // ---------------------------------------------------------------------------
 
 Deno.test("memo: disabled without env vars — returns null, no fetch", async () => {
-  const hasKey = !!Deno.env.get("WATSONX_API_KEY");
-  const hasProjId = !!Deno.env.get("WATSONX_PROJECT_ID");
-  const hasUrl = !!Deno.env.get("WATSONX_URL");
+  const hasKey = !!Deno.env.get("OPENROUTER_API_KEY");
 
-  if (hasKey && hasProjId && hasUrl) {
-    console.log("  [skip] watsonx credentials present — disabled test skipped");
+  if (hasKey) {
+    console.log("  [skip] LLM key present — disabled test skipped");
     return;
   }
 
@@ -107,13 +99,9 @@ Deno.test("memo: disabled without env vars — returns null, no fetch", async ()
 // ---------------------------------------------------------------------------
 
 Deno.test("memo: fabricated quote drops the memo", async () => {
-  const originalKey = Deno.env.get("WATSONX_API_KEY");
-  const originalProjId = Deno.env.get("WATSONX_PROJECT_ID");
-  const originalUrl = Deno.env.get("WATSONX_URL");
+  const originalKey = Deno.env.get("OPENROUTER_API_KEY");
 
-  Deno.env.set("WATSONX_API_KEY", "test-key");
-  Deno.env.set("WATSONX_PROJECT_ID", "test-project");
-  Deno.env.set("WATSONX_URL", "https://eu-de.ml.cloud.ibm.com");
+  Deno.env.set("OPENROUTER_API_KEY", "test-key");
   _resetMemoCache();
 
   try {
@@ -123,7 +111,6 @@ Deno.test("memo: fabricated quote drops the memo", async () => {
 
     const result = await withFakeFetch(
       (url) => {
-        if (url.includes("iam.cloud.ibm.com")) return fakeIam();
         return fakeGeneration(fabricatedMemo);
       },
       () =>
@@ -142,12 +129,8 @@ Deno.test("memo: fabricated quote drops the memo", async () => {
     );
     assert(result!.memo === undefined, "memo field must be absent when rejected");
   } finally {
-    if (originalKey !== undefined) Deno.env.set("WATSONX_API_KEY", originalKey);
-    else Deno.env.delete("WATSONX_API_KEY");
-    if (originalProjId !== undefined) Deno.env.set("WATSONX_PROJECT_ID", originalProjId);
-    else Deno.env.delete("WATSONX_PROJECT_ID");
-    if (originalUrl !== undefined) Deno.env.set("WATSONX_URL", originalUrl);
-    else Deno.env.delete("WATSONX_URL");
+    if (originalKey !== undefined) Deno.env.set("OPENROUTER_API_KEY", originalKey);
+    else Deno.env.delete("OPENROUTER_API_KEY");
     _resetMemoCache();
   }
 });
@@ -157,13 +140,9 @@ Deno.test("memo: fabricated quote drops the memo", async () => {
 // ---------------------------------------------------------------------------
 
 Deno.test("memo: verified memo is returned with annotated quotes", async () => {
-  const originalKey = Deno.env.get("WATSONX_API_KEY");
-  const originalProjId = Deno.env.get("WATSONX_PROJECT_ID");
-  const originalUrl = Deno.env.get("WATSONX_URL");
+  const originalKey = Deno.env.get("OPENROUTER_API_KEY");
 
-  Deno.env.set("WATSONX_API_KEY", "test-key");
-  Deno.env.set("WATSONX_PROJECT_ID", "test-project");
-  Deno.env.set("WATSONX_URL", "https://eu-de.ml.cloud.ibm.com");
+  Deno.env.set("OPENROUTER_API_KEY", "test-key");
   _resetMemoCache();
 
   try {
@@ -173,7 +152,6 @@ Deno.test("memo: verified memo is returned with annotated quotes", async () => {
 
     const result = await withFakeFetch(
       (url) => {
-        if (url.includes("iam.cloud.ibm.com")) return fakeIam();
         return fakeGeneration(verifiedMemo);
       },
       () =>
@@ -201,12 +179,8 @@ Deno.test("memo: verified memo is returned with annotated quotes", async () => {
     assert(q.text === REAL_QUOTE_53, `quote text mismatch: "${q.text}"`);
     assert(q.ref === "Art. 53(1)", `quote ref must be "Art. 53(1)", got "${q.ref}"`);
   } finally {
-    if (originalKey !== undefined) Deno.env.set("WATSONX_API_KEY", originalKey);
-    else Deno.env.delete("WATSONX_API_KEY");
-    if (originalProjId !== undefined) Deno.env.set("WATSONX_PROJECT_ID", originalProjId);
-    else Deno.env.delete("WATSONX_PROJECT_ID");
-    if (originalUrl !== undefined) Deno.env.set("WATSONX_URL", originalUrl);
-    else Deno.env.delete("WATSONX_URL");
+    if (originalKey !== undefined) Deno.env.set("OPENROUTER_API_KEY", originalKey);
+    else Deno.env.delete("OPENROUTER_API_KEY");
     _resetMemoCache();
   }
 });
@@ -216,13 +190,9 @@ Deno.test("memo: verified memo is returned with annotated quotes", async () => {
 // ---------------------------------------------------------------------------
 
 Deno.test("memo: decision and articles unchanged in pipeline response", async () => {
-  const originalKey = Deno.env.get("WATSONX_API_KEY");
-  const originalProjId = Deno.env.get("WATSONX_PROJECT_ID");
-  const originalUrl = Deno.env.get("WATSONX_URL");
+  const originalKey = Deno.env.get("OPENROUTER_API_KEY");
 
-  Deno.env.set("WATSONX_API_KEY", "test-key");
-  Deno.env.set("WATSONX_PROJECT_ID", "test-project");
-  Deno.env.set("WATSONX_URL", "https://eu-de.ml.cloud.ibm.com");
+  Deno.env.set("OPENROUTER_API_KEY", "test-key");
   _resetMemoCache();
 
   try {
@@ -251,7 +221,6 @@ Deno.test("memo: decision and articles unchanged in pipeline response", async ()
 
     const result = await withFakeFetch(
       (url) => {
-        if (url.includes("iam.cloud.ibm.com")) return fakeIam();
         return fakeGeneration(verifiedMemo);
       },
       () => answerRequest(req, fakeSql as Parameters<typeof answerRequest>[1]),
@@ -271,28 +240,20 @@ Deno.test("memo: decision and articles unchanged in pipeline response", async ()
         "a rejected memo must not have text");
     }
   } finally {
-    if (originalKey !== undefined) Deno.env.set("WATSONX_API_KEY", originalKey);
-    else Deno.env.delete("WATSONX_API_KEY");
-    if (originalProjId !== undefined) Deno.env.set("WATSONX_PROJECT_ID", originalProjId);
-    else Deno.env.delete("WATSONX_PROJECT_ID");
-    if (originalUrl !== undefined) Deno.env.set("WATSONX_URL", originalUrl);
-    else Deno.env.delete("WATSONX_URL");
+    if (originalKey !== undefined) Deno.env.set("OPENROUTER_API_KEY", originalKey);
+    else Deno.env.delete("OPENROUTER_API_KEY");
     _resetMemoCache();
   }
 });
 
 // ---------------------------------------------------------------------------
-// 5. payload sent to watsonx contains no answer/patient data
+// 5. payload sent to the LLM contains no answer/patient data
 // ---------------------------------------------------------------------------
 
-Deno.test("memo: payload to watsonx contains no answer/patient data", async () => {
-  const originalKey = Deno.env.get("WATSONX_API_KEY");
-  const originalProjId = Deno.env.get("WATSONX_PROJECT_ID");
-  const originalUrl = Deno.env.get("WATSONX_URL");
+Deno.test("memo: payload to the LLM contains no answer/patient data", async () => {
+  const originalKey = Deno.env.get("OPENROUTER_API_KEY");
 
-  Deno.env.set("WATSONX_API_KEY", "test-key");
-  Deno.env.set("WATSONX_PROJECT_ID", "test-project");
-  Deno.env.set("WATSONX_URL", "https://eu-de.ml.cloud.ibm.com");
+  Deno.env.set("OPENROUTER_API_KEY", "test-key");
   _resetMemoCache();
 
   const capturedBodies: string[] = [];
@@ -303,10 +264,9 @@ Deno.test("memo: payload to watsonx contains no answer/patient data", async () =
 
     await withFakeFetch(
       (url, init) => {
-        if (!url.includes("iam.cloud.ibm.com")) {
+        {
           capturedBodies.push(String(init.body ?? ""));
         }
-        if (url.includes("iam.cloud.ibm.com")) return fakeIam();
         return fakeGeneration(verifiedMemo);
       },
       () =>
@@ -322,7 +282,7 @@ Deno.test("memo: payload to watsonx contains no answer/patient data", async () =
     assert(capturedBodies.length > 0, "must have at least one generation call");
     for (const body of capturedBodies) {
       const parsed = JSON.parse(body);
-      const promptText = typeof parsed.input === "string" ? parsed.input : "";
+      const promptText = typeof parsed.messages?.[0]?.content === "string" ? parsed.messages[0].content : "";
 
       // Must NOT contain patient data, answers, or applicant names
       assert(!promptText.includes("patient_id"), "patient_id must not appear in prompt");
@@ -346,12 +306,8 @@ Deno.test("memo: payload to watsonx contains no answer/patient data", async () =
       );
     }
   } finally {
-    if (originalKey !== undefined) Deno.env.set("WATSONX_API_KEY", originalKey);
-    else Deno.env.delete("WATSONX_API_KEY");
-    if (originalProjId !== undefined) Deno.env.set("WATSONX_PROJECT_ID", originalProjId);
-    else Deno.env.delete("WATSONX_PROJECT_ID");
-    if (originalUrl !== undefined) Deno.env.set("WATSONX_URL", originalUrl);
-    else Deno.env.delete("WATSONX_URL");
+    if (originalKey !== undefined) Deno.env.set("OPENROUTER_API_KEY", originalKey);
+    else Deno.env.delete("OPENROUTER_API_KEY");
     _resetMemoCache();
   }
 });
@@ -361,13 +317,9 @@ Deno.test("memo: payload to watsonx contains no answer/patient data", async () =
 // ---------------------------------------------------------------------------
 
 Deno.test("memo: cache hit makes no additional fetch call", async () => {
-  const originalKey = Deno.env.get("WATSONX_API_KEY");
-  const originalProjId = Deno.env.get("WATSONX_PROJECT_ID");
-  const originalUrl = Deno.env.get("WATSONX_URL");
+  const originalKey = Deno.env.get("OPENROUTER_API_KEY");
 
-  Deno.env.set("WATSONX_API_KEY", "test-key");
-  Deno.env.set("WATSONX_PROJECT_ID", "test-project");
-  Deno.env.set("WATSONX_URL", "https://eu-de.ml.cloud.ibm.com");
+  Deno.env.set("OPENROUTER_API_KEY", "test-key");
   _resetMemoCache();
 
   try {
@@ -377,7 +329,6 @@ Deno.test("memo: cache hit makes no additional fetch call", async () => {
     let fetchCallCount = 0;
     const makeFakeResponse = (url: string) => {
       fetchCallCount++;
-      if (url.includes("iam.cloud.ibm.com")) return fakeIam();
       return fakeGeneration(verifiedMemo);
     };
 
@@ -402,12 +353,8 @@ Deno.test("memo: cache hit makes no additional fetch call", async () => {
       `cache hit must not call fetch (before: ${callsAfterFirst}, after: ${fetchCallCount})`,
     );
   } finally {
-    if (originalKey !== undefined) Deno.env.set("WATSONX_API_KEY", originalKey);
-    else Deno.env.delete("WATSONX_API_KEY");
-    if (originalProjId !== undefined) Deno.env.set("WATSONX_PROJECT_ID", originalProjId);
-    else Deno.env.delete("WATSONX_PROJECT_ID");
-    if (originalUrl !== undefined) Deno.env.set("WATSONX_URL", originalUrl);
-    else Deno.env.delete("WATSONX_URL");
+    if (originalKey !== undefined) Deno.env.set("OPENROUTER_API_KEY", originalKey);
+    else Deno.env.delete("OPENROUTER_API_KEY");
     _resetMemoCache();
   }
 });

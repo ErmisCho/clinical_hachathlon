@@ -6,7 +6,7 @@
  * Order:
  *   1. decide()         – REJECT short-circuits immediately; no patient data touched
  *   2. hold flagged requests before any patient queries or SPE creation
- *   3. parseRequest()   – parse failure → attempt watsonx fallback (Issue #15)
+ *   3. parseRequest()   – parse failure → attempt LLM fallback (Issue #15)
  *   4. If fallback succeeded → mark needs_review (AI-assisted plans held for staff)
  *   5a. APPROVE_STATISTICAL → runPlan()
  *   5b. APPROVE_SPE        → createSpe()
@@ -54,7 +54,7 @@ export interface PipelineResponse {
   /** Present when parseRequest fails (needs_review is also set to true). */
   parse_errors?: { definition: string; reason: string }[];
   /**
-   * Present when the watsonx fallback was used (Issue #15).
+   * Present when the LLM fallback was used (Issue #15).
    * The plan was AI-assisted; needs_review is always true in this case.
    */
   ai_assist?: AiAssist;
@@ -76,7 +76,7 @@ export interface PipelineResponse {
   explanation_error?: string;
   /**
    * AI-drafted reasoning memo grounded in reg_2025_327.json (Issue #35).
-   * Present only when watsonx credentials are set AND all quotes verify.
+   * Present only when OPENROUTER_API_KEY is set AND all quotes verify.
    */
   memo?: {
     text: string;
@@ -177,12 +177,12 @@ export async function answerRequest(
     return base;
   }
 
-  // Step 2 — parse (with optional watsonx fallback on failure).
+  // Step 2 — parse (with optional LLM fallback on failure).
   let parsed = parseRequest(request);
   let ai_assist: AiAssist | undefined;
 
   if (!parsed.ok) {
-    // Attempt watsonx rewrite of unparseable definitions (Issue #15).
+    // Attempt LLM rewrite of unparseable definitions (Issue #15).
     // Safety: fallback result is always held for staff review; never auto-approves.
     const fallback = await attemptFallback(
       request as Record<string, unknown>,

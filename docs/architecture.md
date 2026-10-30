@@ -60,7 +60,7 @@ Supabase Edge Functions
 | I | **No login**: the Lovable UI has an applicant/staff role switch. | Saves time; synthetic data only. |
 | J *(revised)* | **No Docker, no separate hosting.** Lovable publishes the front end; the Supabase CLI deploys the edge functions. | Fastest path to a live URL. |
 | K | The eval against `expected.json` (#2) is the final check; pytest → **Deno tests** per module. | Matches how the jury scores. |
-| L | The **parser is rules-based**; watsonx is an optional fallback (#15), and only request text is ever sent to it. | All 10 requests name their codes in fixed phrasings. |
+| L | The **parser is rules-based**; an LLM (Mistral via OpenRouter) is an optional fallback (#15), and only request text is ever sent to it. | All 10 requests name their codes in fixed phrasings. |
 | M | The **issues and backend code stay in this repo**. The Lovable repo holds only the UI. | Keeps one place for tasks and logic. |
 | N | A thin **R04 end-to-end slice (#16)** goes live before the layers are finished, and **CI (#17)** runs tests and eval on every push. | Site live early; checks are independent of the author. |
 
@@ -112,7 +112,7 @@ once per data holder and adds up the aggregates before the small-cell rule; see
 2. **Statistical answers** never contain a count below 10 without suppression (Decision B), and no suppressed value can be derived exactly from the other values in the same answer (secondary suppression).
 3. **SPE data** is never returned through the API. The download endpoint always returns 403 (Decision E).
 4. **SQL is only generated** inside the engine module (Decision A); the parser and decision modules never produce SQL.
-5. **External services** (watsonx fallback) receive only request text — never patient data (Decision L).
+5. **External services** (LLM fallback) receive only request text — never patient data (Decision L).
 
 ---
 

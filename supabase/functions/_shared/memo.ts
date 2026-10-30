@@ -3,7 +3,7 @@
  *
  * draftMemo(purpose, question, decision, articles, articleTexts) → MemoResult | null
  *
- * Calls watsonx (temperature 0) to draft a short (~150 word) reasoned decision
+ * Calls the configured LLM (temperature 0) to draft a short (~150 word) reasoned decision
  * memo that quotes verbatim paragraphs of Regulation (EU) 2025/327 Chapter IV.
  *
  * Safety contract:
@@ -14,13 +14,13 @@
  *   - Every quoted span is verified verbatim against the stored regulation text
  *     before the memo is returned. A memo with any unverifiable quote is dropped
  *     and memo_status is set to "rejected_unverified_quote".
- *   - The feature is fully disabled when WATSONX_* env vars are absent; callers
+ *   - The feature is fully disabled when OPENROUTER_API_KEY is absent; callers
  *     receive null and the app behaves exactly as before.
  *
- * Reuses: isEnabled() / getIamToken() / callWatsonx pattern from llm_fallback.ts
+ * Reuses: isEnabled() / chatComplete() / llmConfig() from llm_fallback.ts
  */
 
-import { isEnabled } from "./llm_fallback.ts";
+import { chatComplete, isEnabled, llmConfig } from "./llm_fallback.ts";
 import REG from "./regulation/reg_2025_327.json" with { type: "json" };
 
 // ---------------------------------------------------------------------------
@@ -39,7 +39,7 @@ export interface MemoResult {
   text: string;
   /** All verified quoted spans extracted from the memo text. */
   quotes: MemoQuote[];
-  /** The watsonx model identifier used. */
+  /** The LLM model identifier used. */
   model: string;
 }
 
@@ -135,39 +135,6 @@ function verifyAndAnnotateQuotes(
 }
 
 // ---------------------------------------------------------------------------
-// IAM token cache (process-lifetime; same pattern as llm_fallback.ts)
-// ---------------------------------------------------------------------------
-
-let _memoIamCache: { token: string; expiry: number } | null = null;
-
-async function getMemoIamToken(apiKey: string): Promise<string> {
-  const now = Date.now();
-  if (_memoIamCache && _memoIamCache.expiry > now + 60_000) {
-    return _memoIamCache.token;
-  }
-  const body = new URLSearchParams({
-    grant_type: "urn:ibm:params:oauth:grant-type:apikey",
-    apikey: apiKey,
-  });
-  const res = await fetch("https://iam.cloud.ibm.com/identity/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: body.toString(),
-    signal: AbortSignal.timeout(8000),
-  });
-  if (!res.ok) throw new Error(`IAM token request failed: ${res.status}`);
-  const data = await res.json() as {
-    access_token: string;
-    expires_in: number;
-  };
-  _memoIamCache = {
-    token: data.access_token,
-    expiry: now + (data.expires_in ?? 3600) * 1000,
-  };
-  return data.access_token;
-}
-
-// ---------------------------------------------------------------------------
 // Per-request in-memory memo cache
 // ---------------------------------------------------------------------------
 
@@ -221,51 +188,8 @@ Memo:`;
 }
 
 // ---------------------------------------------------------------------------
-// watsonx generation call (same endpoint pattern as llm_fallback.ts)
-// ---------------------------------------------------------------------------
-
-async function callWatsonxMemo(
-  prompt: string,
-  apiKey: string,
-  projectId: string,
-  baseUrl: string,
-): Promise<string> {
-  const token = await getMemoIamToken(apiKey);
-  const url =
-    `${baseUrl.replace(/\/$/, "")}/ml/v1/text/generation?version=2024-05-01`;
-  const payload = {
-    model_id: "ibm/granite-13b-instruct-v2",
-    project_id: projectId,
-    input: prompt,
-    parameters: {
-      decoding_method: "greedy",
-      temperature: 0,
-      max_new_tokens: 300,
-    },
-  };
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(payload),
-    signal: AbortSignal.timeout(10000),
-  });
-  if (!res.ok) throw new Error(`watsonx generation failed: ${res.status}`);
-  const data = await res.json() as {
-    results?: { generated_text: string }[];
-  };
-  const text = data.results?.[0]?.generated_text;
-  if (typeof text !== "string") throw new Error("Unexpected watsonx response shape");
-  return text.trim();
-}
-
-// ---------------------------------------------------------------------------
 // Main exported function
 // ---------------------------------------------------------------------------
-
-const MODEL_ID = "ibm/granite-13b-instruct-v2";
 
 /**
  * Draft a legal reasoning memo grounded in the stored regulation text.
@@ -289,10 +213,6 @@ export async function draftMemo(
 ): Promise<DraftMemoOutcome | null> {
   if (!isEnabled()) return null;
 
-  const apiKey = Deno.env.get("WATSONX_API_KEY")!;
-  const projectId = Deno.env.get("WATSONX_PROJECT_ID")!;
-  const baseUrl = Deno.env.get("WATSONX_URL")!;
-
   // Build regulation text map — only cited articles, from stored JSON
   const articleTexts = buildArticleTextMap(articles);
   if (Object.keys(articleTexts).length === 0) return null;
@@ -313,11 +233,11 @@ export async function draftMemo(
     return { memo: cached, memo_status: "ok" };
   }
 
-  // Call watsonx
+  // Call the LLM
   let memoText: string;
   try {
     const prompt = buildMemoPrompt(purpose, question, decision, articleTexts, refs);
-    memoText = await callWatsonxMemo(prompt, apiKey, projectId, baseUrl);
+    memoText = await chatComplete(prompt, 300, 12000);
   } catch {
     // Any network/timeout error → feature is silent
     return null;
@@ -336,7 +256,7 @@ export async function draftMemo(
   const result: MemoResult = {
     text: memoText,
     quotes: verifiedQuotes,
-    model: MODEL_ID,
+    model: llmConfig()!.model,
   };
   _memoCache.set(cacheKey, result);
   return { memo: result, memo_status: "ok" };
@@ -345,5 +265,4 @@ export async function draftMemo(
 /** Exposed for testing: reset in-memory memo cache between test cases. */
 export function _resetMemoCache(): void {
   _memoCache.clear();
-  _memoIamCache = null;
 }
