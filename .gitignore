@@ -4,3 +4,11 @@ node_modules/
 .env.*
 **/.env
 **/.env.*
+
+# local tool leftovers
+.issue47-review/
+.orchestrator/
+backlog/
+AGENTS.md
+/deno.lock
+*.patch
