@@ -27,6 +27,7 @@ import { attemptFallback, type AiAssist } from "./llm_fallback.ts";
 import { runPlan, type SqlClient as EngineSqlClient } from "./engine.ts";
 import { createSpe, type SqlClient as SpeSqlClient } from "./spe.ts";
 import { explain, verifyQuotes } from "./explain.ts";
+import { draftMemo } from "./memo.ts";
 import type { Answer } from "./engine.ts";
 import type { QueryPlan } from "./plan.ts";
 
@@ -73,6 +74,15 @@ export interface PipelineResponse {
   };
   /** Set when explanation could not be verified. */
   explanation_error?: string;
+  /**
+   * AI-drafted reasoning memo grounded in reg_2025_327.json (Issue #35).
+   * Present only when watsonx credentials are set AND all quotes verify.
+   */
+  memo?: {
+    text: string;
+    quotes: { text: string; ref: string }[];
+    model: string;
+  };
   /** Count of eligible patients (opted-out already excluded by the eligible_patients view). */
   population?: {
     eligible_patients: number;
@@ -284,6 +294,29 @@ export async function answerRequest(
     explanation_error = String(e);
   }
 
+  // Draft AI reasoning memo (Issue #35) — best-effort, never changes decision
+  let memoField: PipelineResponse["memo"] | undefined;
+  try {
+    const articleRefs: Record<string, string> = {};
+    if (explanationField) {
+      for (const art of explanationField.articles) {
+        articleRefs[art.number] = art.ref;
+      }
+    }
+    const outcome = await draftMemo(
+      req.purpose ?? "",
+      req.question ?? "",
+      decision,
+      articles,
+      articleRefs,
+    );
+    if (outcome?.memo_status === "ok" && outcome.memo) {
+      memoField = outcome.memo;
+    }
+  } catch {
+    // Memo is best-effort; any failure is silent
+  }
+
   const base: PipelineResponse = {
     request_id,
     rule_id,
@@ -299,6 +332,7 @@ export async function answerRequest(
   if (spe_schema) base.spe_schema = spe_schema;
   if (explanationField) base.explanation = explanationField;
   if (explanation_error) base.explanation_error = explanation_error;
+  if (memoField) base.memo = memoField;
   if (deadline != null) base.deadline = deadline;
   return base;
 }
