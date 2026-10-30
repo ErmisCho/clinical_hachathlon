@@ -15,7 +15,7 @@ jobs:
           deno-version: v2.x
       - name: Install dependencies
         run: deno install
-      - run: deno test
+      - run: deno test --allow-read --allow-env
       - name: Type check
         shell: bash
         run: |
