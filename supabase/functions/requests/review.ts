@@ -10,11 +10,16 @@ import {
   type RequestLogSql,
 } from "../_shared/request_log.ts";
 
-export interface StaffReview {
+/** The body sent by the client – no staff identity fields. */
+export interface StaffReviewBody {
   action: "approve" | "override";
   request_id: string;
   decision?: PipelineResponse["decision"];
   reason: string;
+}
+
+/** Server-side type: body plus identity injected from the verified Auth token. */
+export interface StaffReview extends StaffReviewBody {
   /** Set server-side from the verified Auth token; not accepted from the client body. */
   staff_name: string;
   /** UUID from Supabase Auth; set server-side. */
@@ -22,7 +27,7 @@ export interface StaffReview {
 }
 
 /** Staff controls are accepted only on the review route, never from a submission. */
-export function validReview(value: unknown): value is Omit<StaffReview, "staff_name" | "staff_user_id"> {
+export function validReview(value: unknown): value is StaffReviewBody {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const body = value as Record<string, unknown>;
   return (body.action === "approve" || body.action === "override") &&

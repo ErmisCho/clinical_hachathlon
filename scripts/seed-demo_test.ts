@@ -135,12 +135,6 @@ Deno.test("curated portfolio has eight decisions, three persistent holds and two
       !/demo|jury|test/i.test(applicant.organisation),
       "Applicants must not carry sample labels",
     );
-    if (e.review) {
-      assert(
-        !/demo|jury|test/i.test(e.review.staff_name),
-        "Staff names must not carry sample labels",
-      );
-    }
   });
   const dates = entries.map((e) => Date.parse(e.request.submitted));
   assert(

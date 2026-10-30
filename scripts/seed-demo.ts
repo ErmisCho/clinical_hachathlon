@@ -1,7 +1,7 @@
 /** Curated demo maintenance. No I/O on import; run with clean, seed, or all. */
 import type { HealthDataRequest } from "../supabase/functions/_shared/decision.ts";
 import type { PipelineResponse } from "../supabase/functions/_shared/pipeline.ts";
-import type { StaffReview } from "../supabase/functions/requests/review.ts";
+import type { StaffReviewBody } from "../supabase/functions/requests/review.ts";
 import { trackRequestFile } from "./eval.ts";
 
 // Fixed reference numbers use the API's supported alphanumeric format.
@@ -42,7 +42,7 @@ export interface DemoEntry {
   label: string;
   expected?: PipelineResponse["decision"];
   held?: boolean;
-  review?: StaffReview;
+  review?: StaffReviewBody;
 }
 
 // Fictional identities composed for this demo; never copied from fixture applicants.
@@ -151,9 +151,6 @@ export async function buildDemo(
         request_id: entry.request.id,
         action: i === 3 ? "approve" : "override",
         ...(i === 4 ? { decision: "REJECT" as const } : {}),
-        staff_name: i === 3
-          ? "Mag. Leonie Bachstegner"
-          : "Dr. Stefan Erlenbrucker",
         reason: i === 3
           ? "The applicant clarified that regional asthma counts support a public health prevention programme. Only anonymised aggregates are authorised; no individual records are needed."
           : "The applicant clarified that the partner would use the counts to select customers for targeted supplement advertising. This downstream use is prohibited under Article 54; access is refused.",
@@ -407,7 +404,7 @@ export async function main(args: string[]) {
             (e.request.applicant as { organisation: string }).organisation,
           submitted: e.request.submitted,
           review: e.review?.action ?? "",
-          staff: e.review?.staff_name ?? "",
+          staff: "(from auth token)",
         })),
       );
       console.log(
