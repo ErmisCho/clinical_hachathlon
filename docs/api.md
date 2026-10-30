@@ -135,6 +135,65 @@ definitions), `status` is `staff_review`, `answer` is null, and neither
 Decision, reason, articles and verified explanation remain available. Applicant
 fields such as `needs_review`, `decision` or `review` cannot bypass the hold.
 
+## `POST /requests/preview`
+
+Lovable: `supabase.functions.invoke("requests/preview", { body })`. Validates the
+body like a full submission (same field rules, same size limits) but does **not**
+save anything, does not query patient data, and does not create or modify any SPE
+schema. It is safe to call repeatedly; there are no side effects.
+
+`id` and `submitted` are optional — the handler fills `"preview"` / current
+timestamp when absent. All other fields follow the same constraints as
+`POST /requests`.
+
+```json
+{
+  "requested_as": "health data request",
+  "purpose": "Public health research on diabetes prevalence.",
+  "question": "How many adults have type 2 diabetes in each region?",
+  "definitions": [
+    "Adult = aged 18 or older on 31 December 2025.",
+    "Type 2 diabetes = any condition with an ICD-10 code starting with E11.",
+    "Report per region: adults with type 2 diabetes."
+  ]
+}
+```
+
+The response contains the decision, plain-language explanation and any definitions
+the parser could not understand:
+
+| Field             | Shape                                                                                      |
+| ----------------- | ------------------------------------------------------------------------------------------ |
+| `decision`        | `REJECT`, `APPROVE_STATISTICAL`, or `APPROVE_SPE`                                          |
+| `articles`        | Array of article number strings                                                            |
+| `reason`          | Plain-language decision reason                                                             |
+| `needs_review`    | Boolean; true when the purpose is unclear                                                  |
+| `rule`            | Plain-language rule name, e.g. `"Approved for anonymised statistics – health data request"` |
+| `trigger_phrases` | Exact substrings of purpose/question that triggered the decision                           |
+| `plan_summary`    | Plain-English description of the parsed query plan (present when parsing succeeded)       |
+| `unreadable`      | Array of `{ index, definition, reason }` — definitions the parser could not consume; `index` is the 0-based position in the submitted `definitions` array |
+
+```json
+{
+  "decision": "APPROVE_STATISTICAL",
+  "articles": ["53", "69"],
+  "reason": "Your purpose is an allowed use of health data (Art. 53). Anonymised statistics are sufficient to answer the question (Art. 69).",
+  "needs_review": false,
+  "rule": "Approved for anonymised statistics – health data request (Art. 53, 69)",
+  "trigger_phrases": ["prevention"],
+  "plan_summary": "Patients aged 18+, with type 2 diabetes (ICD-10 E11), counted per region; metrics: adults with type 2 diabetes (ICD-10 E11)",
+  "unreadable": []
+}
+```
+
+When a definition cannot be parsed its entry has `index` (0-based position in the
+request's `definitions` array), the original `definition` text, and the `reason`
+the parser rejected it. The preview always runs the full parser even for rejected
+requests so the caller can highlight every problematic line.
+
+Invalid fields return HTTP 400 with `{ "error": "invalid request", "problems": [...] }`.
+There is no HTTP 500 path: the preview never connects to the database.
+
 ## `POST /requests/review`
 
 Staff reviews the latest saved submission for `request_id`:

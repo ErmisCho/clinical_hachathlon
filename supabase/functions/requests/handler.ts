@@ -12,6 +12,9 @@ import {
   saveRequest,
 } from "../_shared/request_log.ts";
 import { ReviewError, reviewRequest, validReview } from "./review.ts";
+import { decide } from "../_shared/decision.ts";
+import { parseRequest } from "../_shared/parser.ts";
+import { explain } from "../_shared/explain.ts";
 
 export type RequestDatabase = SqlClient & RequestLogSql & {
   end(): Promise<void>;
@@ -43,8 +46,9 @@ export function createHandler(connect: () => RequestDatabase) {
     const url = new URL(req.url);
     const path = url.pathname.match(/\/requests(?:\/([^/]+))?\/?$/);
     if (!path) return json({ error: "not found" }, 404);
+    const isPreview = req.method === "POST" && path[1] === "preview";
     const isReview = req.method === "POST" && path[1] === "review";
-    if (req.method === "POST" && path[1] && !isReview) {
+    if (req.method === "POST" && path[1] && !isReview && !isPreview) {
       return json({ error: "method not allowed" }, 405);
     }
 
@@ -71,6 +75,8 @@ export function createHandler(connect: () => RequestDatabase) {
         const value = await readRequestJson(req);
         const problems = isReview
           ? validReview(value) ? [] : ["invalid staff review fields"]
+          : isPreview
+          ? validatePreview(value)
           : validateRequest(value);
         if (problems.length) {
           return json({ error: "invalid request", problems }, 400);
@@ -81,6 +87,11 @@ export function createHandler(connect: () => RequestDatabase) {
           ? json({ error: error.message }, error.status)
           : json({ error: "invalid JSON body" }, 400);
       }
+    }
+
+    // Preview: pure computation, no SQL ever.
+    if (isPreview && body) {
+      return handlePreview(body);
     }
 
     let sql: RequestDatabase | undefined;
@@ -171,4 +182,129 @@ export function createHandler(connect: () => RequestDatabase) {
       }
     }
   };
+}
+
+// ---------------------------------------------------------------------------
+// Preview endpoint helpers (no SQL, no side effects)
+// ---------------------------------------------------------------------------
+
+/**
+ * Validate a preview body: same rules as a full submission but id and submitted
+ * are optional (we fill placeholders so parseRequest doesn't fail on them).
+ */
+function validatePreview(value: unknown): string[] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return ["body must be a JSON object"];
+  }
+  const body = value as Record<string, unknown>;
+  const problems: string[] = [];
+  for (const field of ["purpose", "question"]) {
+    const text = body[field];
+    if (typeof text !== "string" || !text.trim() || text.length > 8000) {
+      problems.push(
+        `${field} must be a non-empty string of at most 8000 characters`,
+      );
+    }
+  }
+  if (
+    body.requested_as !== "health data request" &&
+    body.requested_as !== "health data access application"
+  ) {
+    problems.push(
+      `requested_as must be one of: health data request, health data access application`,
+    );
+  }
+  if (!Array.isArray(body.definitions)) {
+    problems.push("definitions must be an array of strings");
+  } else {
+    if (body.definitions.length > 50) {
+      problems.push("definitions must contain at most 50 entries");
+    }
+    body.definitions.slice(0, 50).forEach((definition, index) => {
+      if (
+        typeof definition !== "string" || !definition.trim() ||
+        definition.length > 2000
+      ) {
+        problems.push(
+          `definitions[${index}] must be a non-empty string of at most 2000 characters`,
+        );
+      }
+    });
+  }
+  return problems;
+}
+
+export interface PreviewResponse {
+  decision: "REJECT" | "APPROVE_STATISTICAL" | "APPROVE_SPE";
+  articles: string[];
+  reason: string;
+  needs_review: boolean;
+  rule: string;
+  trigger_phrases: string[];
+  plan_summary?: string;
+  /** definitions that could not be parsed: [{index, definition, reason}] */
+  unreadable: { index: number; definition: string; reason: string }[];
+}
+
+function handlePreview(body: Record<string, unknown>): Response {
+  // Fill placeholders so parseRequest's id check passes.
+  const req: Record<string, unknown> = {
+    ...body,
+    id: typeof body.id === "string" && body.id.trim() ? body.id : "preview",
+    submitted: typeof body.submitted === "string"
+      ? body.submitted
+      : new Date().toISOString(),
+  };
+
+  const decisionResult = decide(req as unknown as Parameters<typeof decide>[0]);
+  const { decision, articles, reason, needs_review } = decisionResult;
+
+  // Parse to find unreadable definitions (always run, even for REJECT).
+  const parsed = parseRequest(req);
+  const unreadable: { index: number; definition: string; reason: string }[] =
+    [];
+  if (!parsed.ok) {
+    const definitions = Array.isArray(body.definitions)
+      ? (body.definitions as string[])
+      : [];
+    for (const err of parsed.errors) {
+      const index = definitions.findIndex(
+        (d) => typeof d === "string" && d === err.definition,
+      );
+      unreadable.push({
+        index: index === -1 ? -1 : index,
+        definition: err.definition,
+        reason: err.reason,
+      });
+    }
+  }
+
+  // Explain (best-effort, do not fail the preview if it throws).
+  let rule = "";
+  let trigger_phrases: string[] = [];
+  let plan_summary: string | undefined;
+  try {
+    const exp = explain(
+      req as unknown as Parameters<typeof explain>[0],
+      decisionResult,
+      parsed.ok ? parsed.plan : undefined,
+    );
+    rule = exp.rule;
+    trigger_phrases = exp.trigger_phrases;
+    plan_summary = exp.plan_summary;
+  } catch {
+    // ignore — rule stays empty
+  }
+
+  const response: PreviewResponse = {
+    decision,
+    articles,
+    reason,
+    needs_review,
+    rule,
+    trigger_phrases,
+    unreadable,
+  };
+  if (plan_summary !== undefined) response.plan_summary = plan_summary;
+  return json(response);
 }
