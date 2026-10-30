@@ -6,6 +6,7 @@ import {
 import { answerRequest, type SqlClient } from "../_shared/pipeline.ts";
 import {
   listRequests,
+  listStaffActions,
   loadRequest,
   type RequestLogSql,
   saveRequest,
@@ -118,6 +119,8 @@ export function createHandler(connect: () => RequestDatabase) {
          ORDER BY attempted_at DESC, id DESC LIMIT 100`,
         [],
       );
+      stage = "list_staff_actions";
+      const staffActions = await listStaffActions(sql);
       stage = "serialize";
       return json({
         requests: requests.map((row) => ({
@@ -133,6 +136,14 @@ export function createHandler(connect: () => RequestDatabase) {
         downloads: downloads.map((row) => ({
           request_id: row.request_id,
           attempted_at: row.attempted_at,
+        })),
+        staff_actions: staffActions.map((row) => ({
+          request_id: row.request_id,
+          action: row.action,
+          decision: row.decision,
+          reason: row.reason,
+          staff_name: row.staff_name,
+          created_at: row.created_at,
         })),
       });
     } catch (error) {

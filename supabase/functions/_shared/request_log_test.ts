@@ -77,6 +77,21 @@ function fakeSql(results: Record<string, unknown>[][] = []) {
           const row = stored.findLast((row) => row.request_id === params[0]);
           return Promise.resolve(row ? [{ response: row.response }] : []);
         }
+        if (
+          text.includes("FROM public.staff_action") &&
+          text.includes("LIMIT 100")
+        ) {
+          return Promise.resolve(
+            actions.map((a) => ({
+              request_id: a.request_id,
+              action: a.action,
+              decision: a.decision,
+              reason: a.reason,
+              staff_name: a.staff_name,
+              created_at: a.created_at,
+            })),
+          );
+        }
         if (text.includes("AS history")) {
           assert(
             text.includes("WITH held AS MATERIALIZED") &&
@@ -620,6 +635,7 @@ Deno.test("requests: overview selects and projects only safe fields for every hi
       spe_schema: "spe_r01",
     }],
     downloads: [{ request_id: "R05", attempted_at: "2026-10-29T13:00:00Z" }],
+    staff_actions: [],
   });
   assert(
     !fake.calls[0].text.includes("SELECT *"),
@@ -703,7 +719,34 @@ Deno.test("requests: empty overview includes both lists", async () => {
   const fake = fakeSql();
   equal(
     await (await createHandler(() => fake.sql)(new Request(base + "/"))).json(),
-    { requests: [], downloads: [] },
+    { requests: [], downloads: [], staff_actions: [] },
+  );
+});
+
+Deno.test("requests: overview includes staff_actions newest first, limit 200, no private fields", async () => {
+  const fake = fakeSql();
+  await heldRequest(fake);
+  const handler = createHandler(() => fake.sql);
+  patientResults(fake);
+  await handler(post(staffReview, base + "/review"));
+  const overview = await (await handler(new Request(base))).json();
+  equal(overview.staff_actions.length, 1);
+  const sa = overview.staff_actions[0];
+  equal(sa.request_id, "R01");
+  equal(sa.action, "approve");
+  equal(sa.staff_name, "Reviewer");
+  equal(sa.reason, staffReview.reason);
+  assert(typeof sa.created_at === "string", "created_at must be present");
+  assert(!("id" in sa), "staff_action id must not leak");
+  assert(!("request_log_id" in sa), "request_log_id must not leak");
+  assert(
+    fake.calls.some(
+      (call) =>
+        call.text.includes("FROM public.staff_action") &&
+        call.text.includes("ORDER BY created_at DESC, id DESC") &&
+        call.text.includes("LIMIT 100"),
+    ),
+    "must query staff_action with ordering and limit",
   );
 });
 
@@ -788,7 +831,7 @@ Deno.test("requests: cleanup failure preserves saved response", async () => {
   fake.sql.end = () => Promise.reject(new Error("private connection details"));
   const response = await createHandler(() => fake.sql)(new Request(base));
   equal(response.status, 200);
-  equal(await response.json(), { requests: [], downloads: [] });
+  equal(await response.json(), { requests: [], downloads: [], staff_actions: [] });
 });
 
 Deno.test("requests: SPE result saves only cohort size and schema, never record rows", async () => {

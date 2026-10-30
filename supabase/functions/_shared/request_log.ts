@@ -42,6 +42,16 @@ export async function loadRequest(
   return rows.length ? responseObject(rows[0].response) : null;
 }
 
+export function listStaffActions(sql: RequestLogSql) {
+  return sql.unsafe(
+    `SELECT request_id, action, decision, reason, staff_name, created_at
+     FROM public.staff_action
+     ORDER BY created_at DESC, id DESC
+     LIMIT 100`,
+    [],
+  );
+}
+
 export function listRequests(sql: RequestLogSql) {
   // Reserve space for held submissions before filling with recent decisions.
   // Only legacy strings need decoding to inspect needs_review; normalize and

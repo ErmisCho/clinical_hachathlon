@@ -185,15 +185,15 @@ HTTP 400. Both `/requests` and `/requests/` are accepted.
 
 ## `GET /requests`
 
-Without an id, returns a bounded submission overview and the newest 100 entries
-of the blocked-download log. The overview reserves space for submissions still
-awaiting staff review (`needs_review: true`), then fills the remaining places
-with the newest decided submissions up to 100 total. Both lists are newest first
-(timestamp descending, then database row id descending). There is no pagination;
-`limit` and `offset` have no effect. Repeated request ids appear once per selected
-saved submission. History selection happens before overview JSON projection and
-staff-action lookup; legacy JSON-string responses are decoded as needed to
-identify held submissions.
+Without an id, returns a bounded submission overview, the newest 100 entries
+of the blocked-download log, and the newest 100 staff audit entries. The overview
+reserves space for submissions still awaiting staff review (`needs_review: true`),
+then fills the remaining places with the newest decided submissions up to 100
+total. All lists are newest first (timestamp descending, then database row id
+descending). There is no pagination; `limit` and `offset` have no effect.
+Repeated request ids appear once per selected saved submission. History selection
+happens before overview JSON projection and staff-action lookup; legacy
+JSON-string responses are decoded as needed to identify held submissions.
 
 If more than 100 submissions await review, all held submissions are returned
 and decided submissions are omitted; preserving the staff queue takes precedence
@@ -228,19 +228,35 @@ over the 100-row target in that case.
       "request_id": "R05",
       "attempted_at": "2026-10-29T18:31:00.123Z"
     }
+  ],
+  "staff_actions": [
+    {
+      "request_id": "R01",
+      "action": "approve",
+      "decision": "APPROVE_STATISTICAL",
+      "reason": "The applicant clarified the research purpose.",
+      "staff_name": "Demo reviewer",
+      "created_at": "2026-10-29T18:32:00.123Z"
+    }
   ]
 }
 ```
 
 `submitted_at` is the server's save timestamp, not the submitted request's
 `submitted` metadata. `spe_schema` is null when absent. Empty history returns
-`{ "requests": [], "downloads": [] }`. The overview never contains answers,
-request bodies, applicant metadata, patient data, or download user agents.
+`{ "requests": [], "downloads": [], "staff_actions": [] }`. The overview never
+contains answers, request bodies, applicant metadata, patient data, or download
+user agents.
 Each row includes `status` (`staff_review` or `decided`) and `last_staff_action`
 (null or `{ id, request_id, action, decision, reason, staff_name, created_at }`).
 The action is the latest for that exact submission, ordered by `created_at`, then
 audit id descending. Staff can filter `status: "staff_review"` for their queue.
 Legacy saved responses without status are classified using `needs_review`.
+
+`staff_actions` lists up to 100 audit rows newest first. Each entry has
+`request_id`, `action` (`approve` or `override`), `decision` (the effective
+decision after the action), `reason`, `staff_name`, and `created_at`. Internal
+ids are not included.
 
 ## Errors from `requests`
 
@@ -256,7 +272,8 @@ Errors use `{ "error": "message" }`. Internal failures always return
 `{ "error": "internal server error", "code": "42501", "stage": "list_requests" }`.
 `code` is the Postgres SQLSTATE when present, otherwise the error name. `stage`
 identifies the failing step: `connect`, `list_requests`, `list_downloads`,
-`load_request`, `answer_request`, `save_request`, `review_request`, or `serialize`.
+`list_staff_actions`, `load_request`, `answer_request`, `save_request`,
+`review_request`, or `serialize`.
 Only the code and stage are logged for these failures; exception text, SQL,
 request bodies, row data, and stack traces are never returned.
 
