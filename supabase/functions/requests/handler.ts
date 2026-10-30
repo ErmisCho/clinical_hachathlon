@@ -11,7 +11,6 @@ import {
   recordEvents,
   type RequestLogSql,
   saveRequest,
-  submissionStatuses,
 } from "../_shared/request_log.ts";
 import { ReviewError, reviewRequest, validReview } from "./review.ts";
 import { decide } from "../_shared/decision.ts";
@@ -113,14 +112,10 @@ export function createHandler(connect: () => RequestDatabase) {
         const response = await answerRequest(body, sql);
         stage = "save_request";
         const { logId } = await saveRequest(sql, body, response);
-        await recordEvents(sql, logId, response.request_id, response);
+        const timeline = await recordEvents(sql, logId, response.request_id, response);
         stage = "serialize";
-        // Attach a timeline (no DB timestamps on first response; real timestamps on GET).
-        const timeline = submissionStatuses(response).map((status) => ({
-          status,
-          at: "",
-        }));
-        return json({ ...response, timeline });
+        const lifecycle_status = timeline[timeline.length - 1]?.status ?? null;
+        return json({ ...response, timeline, lifecycle_status });
       }
       if (id !== null) {
         stage = "load_request";

@@ -188,12 +188,12 @@ Deno.test("requests: five parallel track submissions keep decisions and saved re
     const result = await responses[i].json();
     equal(result.request_id, requests[i].id);
     equal(result.decision, decisions[i]);
-    // timeline is added to the response after saveRequest, so the saved row does not include it.
-    const { timeline: _timeline, ...resultWithoutTimeline } = result;
+    // timeline and lifecycle_status are added after saveRequest; the saved row excludes them.
+    const { timeline: _t, lifecycle_status: _ls, ...resultWithoutExtras } = result;
     equal(saved.find((row) => row[0] === requests[i].id), [
       requests[i].id,
       requests[i],
-      resultWithoutTimeline,
+      resultWithoutExtras,
     ]);
     if (i === 4) {
       equal(result.spe_schema, "spe_r05");

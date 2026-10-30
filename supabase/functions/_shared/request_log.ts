@@ -9,7 +9,7 @@ export interface RequestLogSql {
   ): PromiseLike<Record<string, unknown>[]>;
 }
 
-/** A single lifecycle status change with a server timestamp. */
+/** A single lifecycle status change with an ISO 8601 server timestamp. */
 export interface TimelineEvent {
   status: "submitted" | "assessed" | "staff_review" | "decided" | "fulfilled";
   at: string;
@@ -49,7 +49,7 @@ export function reviewStatuses(
 }
 
 /**
- * Insert lifecycle events for a new submission.
+ * Insert lifecycle events for a new submission and return them with real DB timestamps.
  *
  * Always: submitted + assessed.
  * Then:
@@ -62,15 +62,25 @@ export async function recordEvents(
   logId: unknown,
   requestId: string,
   response: PipelineResponse,
-): Promise<void> {
+): Promise<TimelineEvent[]> {
+  const timeline: TimelineEvent[] = [];
   for (const status of submissionStatuses(response)) {
-    await sql`INSERT INTO public.request_event (request_log_id, request_id, status)
-      VALUES (${logId}, ${requestId}, ${status})`;
+    const rows = await sql.unsafe(
+      `INSERT INTO public.request_event (request_log_id, request_id, status)
+       VALUES ($1, $2, $3)
+       RETURNING to_char(at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS at`,
+      [String(logId), requestId, status],
+    );
+    timeline.push({
+      status,
+      at: String((rows[0] as Record<string, unknown>)?.at ?? ""),
+    });
   }
+  return timeline;
 }
 
 /**
- * Insert lifecycle events after a staff review.
+ * Insert lifecycle events after a staff review and return them with real DB timestamps.
  *
  * - Still held (parse failure survived review): staff_review
  * - Decided + not REJECT: decided + fulfilled
@@ -81,11 +91,42 @@ export async function recordReviewEvents(
   logId: unknown,
   requestId: string,
   response: PipelineResponse,
-): Promise<void> {
+): Promise<TimelineEvent[]> {
+  const newEvents: TimelineEvent[] = [];
   for (const status of reviewStatuses(response)) {
-    await sql`INSERT INTO public.request_event (request_log_id, request_id, status)
-      VALUES (${logId}, ${requestId}, ${status})`;
+    const rows = await sql.unsafe(
+      `INSERT INTO public.request_event (request_log_id, request_id, status)
+       VALUES ($1, $2, $3)
+       RETURNING to_char(at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS at`,
+      [String(logId), requestId, status],
+    );
+    newEvents.push({
+      status,
+      at: String((rows[0] as Record<string, unknown>)?.at ?? ""),
+    });
   }
+  return newEvents;
+}
+
+/**
+ * Load all existing events for a given log row, ordered chronologically.
+ */
+export async function loadEventsForLog(
+  sql: RequestLogSql,
+  logId: unknown,
+): Promise<TimelineEvent[]> {
+  const events = await sql.unsafe(
+    `SELECT status,
+            to_char(at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS at
+     FROM public.request_event
+     WHERE request_log_id = $1
+     ORDER BY at ASC, id ASC`,
+    [String(logId)],
+  );
+  return events.map((row) => ({
+    status: row.status as TimelineEvent["status"],
+    at: String(row.at ?? ""),
+  }));
 }
 
 export async function saveRequest(
@@ -127,19 +168,10 @@ export async function loadRequest(
   if (!rows.length) return null;
   const logId = (rows[0] as Record<string, unknown>).id;
   const response = responseObject(rows[0].response);
-  // Attach timeline events from this specific log row.
-  const events = await sql.unsafe(
-    `SELECT status, at FROM public.request_event
-     WHERE request_log_id = $1
-     ORDER BY at ASC, id ASC`,
-    [String(logId)],
-  );
-  const timeline: TimelineEvent[] = events.map((row) => ({
-    status: row.status as TimelineEvent["status"],
-    at: String(row.at ?? ""),
-  }));
+  const timeline = await loadEventsForLog(sql, logId);
   if (timeline.length > 0) {
     response.timeline = timeline;
+    response.lifecycle_status = timeline[timeline.length - 1].status;
   }
   return response;
 }

@@ -63,6 +63,8 @@ export interface PipelineResponse {
   };
   /** Ordered lifecycle events attached by loadRequest; not present in freshly computed responses. */
   timeline?: { status: string; at: string }[];
+  /** Last status in the timeline (e.g. "fulfilled"). Backwards-compatible addition: top-level status stays "staff_review"|"decided". */
+  lifecycle_status?: string | null;
 }
 
 /** Query the count of eligible patients (opted-out rows are excluded by the view). */

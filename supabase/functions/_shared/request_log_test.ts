@@ -49,13 +49,15 @@ function fakeSql(results: Record<string, unknown>[][] = []) {
           });
         }
         if (text.includes("INSERT INTO public.request_event")) {
+          const at = "2026-10-30T12:00:00.000Z";
           events.push({
             request_log_id: params[0],
             request_id: params[1],
             status: String(params[2]),
-            at: "2026-10-30T12:00:00Z",
+            at,
           });
-          return Promise.resolve([]);
+          // Return the RETURNING at value so recordEvents/recordReviewEvents get real timestamps.
+          return Promise.resolve([{ at }]);
         }
         if (results.length) return Promise.resolve(results.shift()!);
         if (
@@ -1078,17 +1080,24 @@ Deno.test("lifecycle: statistical submission records submitted+assessed+decided+
   assert(Array.isArray(result.timeline), "timeline present in POST response");
   const statuses = result.timeline.map((e: { status: string }) => e.status);
   equal(statuses, ["submitted", "assessed", "decided", "fulfilled"]);
+  // Real timestamps (non-empty ISO 8601) from RETURNING at.
+  assert(
+    result.timeline.every((e: { at: string }) => e.at.length > 0),
+    "POST timeline has real timestamps",
+  );
+  equal(result.lifecycle_status, "fulfilled");
   // Events stored in DB.
   equal(
     fake.events.filter((e) => e.request_id === "R01").map((e) => e.status),
     ["submitted", "assessed", "decided", "fulfilled"],
   );
-  // GET ?id returns timeline with DB timestamps.
+  // GET ?id returns timeline with DB timestamps and lifecycle_status.
   const got = await (await createHandler(() => fake.sql)(new Request(base + "?id=R01"))).json();
   assert(Array.isArray(got.timeline) && got.timeline.length === 4, "GET has 4 timeline events");
   equal(got.timeline[0].status, "submitted");
   equal(got.timeline[3].status, "fulfilled");
-  assert(typeof got.timeline[0].at === "string", "timeline events have timestamps");
+  assert(got.timeline[0].at.length > 0, "GET timeline events have ISO 8601 timestamps");
+  equal(got.lifecycle_status, "fulfilled");
 });
 
 Deno.test("lifecycle: SPE submission records submitted+assessed+decided+fulfilled", async () => {
@@ -1096,13 +1105,14 @@ Deno.test("lifecycle: SPE submission records submitted+assessed+decided+fulfille
   fake.sql.unsafe = (text, params = []) => {
     fake.calls.push({ text, params });
     if (text.includes("INSERT INTO public.request_event")) {
+      const at = "2026-10-30T12:00:00.000Z";
       fake.events.push({
         request_log_id: params[0] as unknown,
         request_id: params[1] as unknown as string,
         status: String(params[2]),
-        at: "2026-10-30T12:00:00Z",
+        at,
       });
-      return Promise.resolve([]);
+      return Promise.resolve([{ at }]);
     }
     if (text.includes("SELECT COUNT(*)::text AS n")) {
       return Promise.resolve([{ n: "42" }]);
@@ -1160,6 +1170,7 @@ Deno.test("lifecycle: rejected submission records submitted+assessed+decided (no
   equal(result.decision, "REJECT");
   const statuses = result.timeline.map((e: { status: string }) => e.status);
   equal(statuses, ["submitted", "assessed", "decided"]);
+  equal(result.lifecycle_status, "decided");
   equal(
     fake.events.filter((e) => e.request_id === "R02").map((e) => e.status),
     ["submitted", "assessed", "decided"],
@@ -1171,13 +1182,14 @@ Deno.test("lifecycle: held submission records submitted+assessed+staff_review (n
   const held = await heldRequest(fake);
   const statuses = held.timeline.map((e: { status: string }) => e.status);
   equal(statuses, ["submitted", "assessed", "staff_review"]);
+  equal(held.lifecycle_status, "staff_review");
   equal(
     fake.events.filter((e) => e.request_id === "R01").map((e) => e.status),
     ["submitted", "assessed", "staff_review"],
   );
 });
 
-Deno.test("lifecycle: held→approved records decided+fulfilled in review response and GET", async () => {
+Deno.test("lifecycle: held→approved returns full timeline and lifecycle_status=fulfilled", async () => {
   const fake = fakeSql();
   await heldRequest(fake);
   patientResults(fake);
@@ -1186,19 +1198,21 @@ Deno.test("lifecycle: held→approved records decided+fulfilled in review respon
   equal(response.status, 200);
   const result = await response.json();
   equal(result.status, "decided");
-  // Review response includes decided+fulfilled timeline.
+  // Review response includes the FULL timeline (prior events + new events).
   const statuses = result.timeline.map((e: { status: string }) => e.status);
-  equal(statuses, ["decided", "fulfilled"]);
+  equal(statuses, ["submitted", "assessed", "staff_review", "decided", "fulfilled"]);
+  equal(result.lifecycle_status, "fulfilled");
   // Events accumulated: submitted+assessed+staff_review from initial hold +
   // decided+fulfilled from review.
   const allStatuses = fake.events
     .filter((e) => e.request_id === "R01")
     .map((e) => e.status);
   equal(allStatuses, ["submitted", "assessed", "staff_review", "decided", "fulfilled"]);
-  // GET ?id shows full timeline.
+  // GET ?id shows full timeline with lifecycle_status.
   const got = await (await handler(new Request(base + "/R01"))).json();
   assert(Array.isArray(got.timeline) && got.timeline.length === 5, "GET has 5 timeline events");
   equal(got.timeline.map((e: { status: string }) => e.status), [
     "submitted", "assessed", "staff_review", "decided", "fulfilled",
   ]);
+  equal(got.lifecycle_status, "fulfilled");
 });

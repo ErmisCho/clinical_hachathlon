@@ -4,8 +4,8 @@ import {
   type SqlClient,
 } from "../_shared/pipeline.ts";
 import {
+  loadEventsForLog,
   recordReviewEvents,
-  reviewStatuses,
   type RequestLogSql,
 } from "../_shared/request_log.ts";
 
@@ -90,11 +90,10 @@ export async function reviewRequest(
     (request_id, request_log_id, action, decision, reason, staff_name)
     VALUES (${review.request_id}, ${row.id}, ${review.action}, ${response.decision},
             ${review.reason}, ${review.staff_name})`;
-  await recordReviewEvents(tx, row.id, review.request_id, response);
-  // Attach a timeline summary to the review response.
-  const timeline = reviewStatuses(response).map((status) => ({
-    status,
-    at: "",
-  }));
-  return { ...response, timeline };
+  // Load prior events then append new ones — gives full timeline in the review response.
+  const priorEvents = await loadEventsForLog(tx, row.id);
+  const newEvents = await recordReviewEvents(tx, row.id, review.request_id, response);
+  const timeline = [...priorEvents, ...newEvents];
+  const lifecycle_status = timeline[timeline.length - 1]?.status ?? null;
+  return { ...response, timeline, lifecycle_status };
 }
