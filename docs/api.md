@@ -68,6 +68,7 @@ The response is the complete pipeline result:
 | `answer`             | Aggregate object, SPE `{ "cohort_size": number }`, or `null` for rejection or any review hold                 |
 | `spe_schema`         | Present only for successful SPE creation, e.g. `spe_r05`                                                 |
 | `parse_errors`       | Present for parse failure: array of `{ "definition": string, "reason": string }`                         |
+| `ai_assist`          | Present when the watsonx fallback was used (Issue #15): `{ "used": true, "model": string, "rewritten": [{ "original": string, "rewritten": string }] }`. Always accompanied by `needs_review: true` and `answer: null`. Staff see exactly what the AI changed before approving. |
 | `explanation`        | Present when quote verification passes (see below); omitted otherwise                                   |
 | `explanation_error`  | Present when explanation could not be verified; omitted otherwise                                        |
 | `population`         | Present only after successful execution: `{ "eligible_patients": number }` — count from the `eligible_patients` view (opted-out rows already excluded) |
@@ -183,6 +184,7 @@ the parser could not understand:
 | `trigger_phrases` | Exact substrings of purpose/question that triggered the decision                           |
 | `plan_summary`    | Plain-English description of the parsed query plan (present when parsing succeeded)       |
 | `unreadable`      | Array of `{ index, definition, reason }` — definitions the parser could not consume; `index` is the 0-based position in the submitted `definitions` array |
+| `ai_assist`       | Present when the watsonx fallback successfully rewrote a failing definition: `{ "used": true, "model": string, "rewritten": [...] }`. The preview is still held (`needs_review: true`, `status: "staff_review"`). |
 
 ```json
 {

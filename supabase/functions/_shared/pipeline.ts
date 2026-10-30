@@ -6,9 +6,10 @@
  * Order:
  *   1. decide()         – REJECT short-circuits immediately; no patient data touched
  *   2. hold flagged requests before any patient queries or SPE creation
- *   3. parseRequest()   – parse failure returns decision + needs_review + parse_errors
- *   4a. APPROVE_STATISTICAL → runPlan()
- *   4b. APPROVE_SPE        → createSpe()
+ *   3. parseRequest()   – parse failure → attempt watsonx fallback (Issue #15)
+ *   4. If fallback succeeded → mark needs_review (AI-assisted plans held for staff)
+ *   5a. APPROVE_STATISTICAL → runPlan()
+ *   5b. APPROVE_SPE        → createSpe()
  *
  * Every executed response with a valid plan also includes:
  *   - explanation (when verifyQuotes passes; otherwise explanation_error is set)
@@ -21,6 +22,7 @@ import {
   type HealthDataRequest,
 } from "./decision.ts";
 import { parseRequest } from "./parser.ts";
+import { attemptFallback, type AiAssist } from "./llm_fallback.ts";
 import { runPlan, type SqlClient as EngineSqlClient } from "./engine.ts";
 import { createSpe, type SqlClient as SpeSqlClient } from "./spe.ts";
 import { explain, verifyQuotes } from "./explain.ts";
@@ -49,6 +51,11 @@ export interface PipelineResponse {
   spe_schema?: string;
   /** Present when parseRequest fails (needs_review is also set to true). */
   parse_errors?: { definition: string; reason: string }[];
+  /**
+   * Present when the watsonx fallback was used (Issue #15).
+   * The plan was AI-assisted; needs_review is always true in this case.
+   */
+  ai_assist?: AiAssist;
   /** Explanation of the decision (omitted when verifyQuotes fails). */
   explanation?: {
     rule: string;
@@ -148,10 +155,26 @@ export async function answerRequest(
     return base;
   }
 
-  // Step 2 — parse.
-  const parsed = parseRequest(request);
+  // Step 2 — parse (with optional watsonx fallback on failure).
+  let parsed = parseRequest(request);
+  let ai_assist: AiAssist | undefined;
+
   if (!parsed.ok) {
-    // No plan; still explain the decision
+    // Attempt watsonx rewrite of unparseable definitions (Issue #15).
+    // Safety: fallback result is always held for staff review; never auto-approves.
+    const fallback = await attemptFallback(
+      request as Record<string, unknown>,
+      parsed.errors,
+      sql,
+    );
+    if (fallback) {
+      parsed = fallback.parsed;
+      ai_assist = fallback.ai_assist;
+    }
+  }
+
+  if (!parsed.ok) {
+    // Still no plan (fallback absent or failed); hold for staff review.
     let explanationField: PipelineResponse["explanation"] | undefined;
     let explanation_error: string | undefined;
     try {
@@ -182,6 +205,41 @@ export async function answerRequest(
   }
 
   const { plan } = parsed;
+
+  // Safety (Issue #15): AI-assisted plans are ALWAYS held for staff review.
+  // The LLM may only make outcomes stricter; it can never auto-approve.
+  const effectiveNeedsReview = needs_review || ai_assist !== undefined;
+
+  if (effectiveNeedsReview) {
+    // Hold without querying patient data.
+    let explanationField: PipelineResponse["explanation"] | undefined;
+    let explanation_error: string | undefined;
+    try {
+      const exp = explain(req, decisionResult, plan as QueryPlan);
+      if (verifyQuotes(exp, req)) {
+        explanationField = exp;
+      } else {
+        explanation_error = "Quote verification failed";
+      }
+    } catch (e) {
+      explanation_error = String(e);
+    }
+    const base: PipelineResponse = {
+      request_id,
+      rule_id,
+      rules_version,
+      decision,
+      articles,
+      reason,
+      needs_review: true,
+      status: "staff_review",
+      answer: null,
+    };
+    if (ai_assist) base.ai_assist = ai_assist;
+    if (explanationField) base.explanation = explanationField;
+    if (explanation_error) base.explanation_error = explanation_error;
+    return base;
+  }
 
   // Step 3 — execute + population (both read patient data)
   let answer: Answer | { cohort_size: number };

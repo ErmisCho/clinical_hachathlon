@@ -62,7 +62,7 @@ The API exposes `POST /requests`, `POST /requests/preview` (no database work),
 **Models and services:** no LLM decides or computes. Decisions use deterministic
 rules; answers use SQL. Services are Supabase (Postgres + Edge Functions;
 deployment region `eu-west-1`), Lovable hosting and GitHub Actions CI.
-A stricter-only watsonx parser fallback is planned, **not active**.
+watsonx fallback implemented, off unless credentials are set (`WATSONX_API_KEY`, `WATSONX_PROJECT_ID`, `WATSONX_URL`); AI-assisted plans are always held for staff review.
 Every pipeline response and saved decision carries `rule_id` and `rules_version`
 from `decide()`. Federated comparison (#37) and in-SPE FHIR R4 conversion
 (#38) exist as scripts, rather than UI workflows.

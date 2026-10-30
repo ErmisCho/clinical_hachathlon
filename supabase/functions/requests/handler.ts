@@ -21,6 +21,7 @@ import { ReviewError, reviewRequest, validReview } from "./review.ts";
 import { AuthError, type FetchFn, verifyStaffToken } from "./auth.ts";
 import { decide } from "../_shared/decision.ts";
 import { parseRequest } from "../_shared/parser.ts";
+import { attemptFallback, type AiAssist } from "../_shared/llm_fallback.ts";
 import { explain } from "../_shared/explain.ts";
 
 export type RequestDatabase = SqlClient & RequestLogSql & {
@@ -108,7 +109,7 @@ export function createHandler(
 
     // Preview: pure computation, no SQL ever.
     if (isPreview && body) {
-      return handlePreview(body, hdab);
+      return await handlePreview(body, hdab);
     }
 
     // ── Authentication: review route requires a valid staff token ──────────────
@@ -324,12 +325,14 @@ export interface PreviewResponse {
   plan_summary?: string;
   /** definitions that could not be parsed: [{index, definition, reason}] */
   unreadable: { index: number; definition: string; reason: string }[];
+  /** Present when the watsonx fallback was used (Issue #15). */
+  ai_assist?: AiAssist;
 }
 
-function handlePreview(
+async function handlePreview(
   body: Record<string, unknown>,
   hdab: HdabConfig,
-): Response {
+): Promise<Response> {
   // Fill placeholders so parseRequest's id check passes.
   const req: Record<string, unknown> = {
     ...body,
@@ -347,22 +350,33 @@ function handlePreview(
   const { decision, articles, reason, needs_review } = decisionResult;
 
   // Parse to find unreadable definitions (always run, even for REJECT).
-  const parsed = parseRequest(req);
+  let parsed = parseRequest(req);
+  let ai_assist: AiAssist | undefined;
   const unreadable: { index: number; definition: string; reason: string }[] =
     [];
   if (!parsed.ok) {
-    const definitions = Array.isArray(body.definitions)
-      ? (body.definitions as string[])
-      : [];
-    for (const err of parsed.errors) {
-      const index = definitions.findIndex(
-        (d) => typeof d === "string" && d === err.definition,
-      );
-      unreadable.push({
-        index: index === -1 ? -1 : index,
-        definition: err.definition,
-        reason: err.reason,
-      });
+    // Attempt watsonx fallback (in-memory cache only; no SQL in preview).
+    const fallback = await attemptFallback(req, parsed.errors, undefined);
+    if (fallback) {
+      parsed = fallback.parsed;
+      ai_assist = fallback.ai_assist;
+      // If the fallback succeeded, the definitions parse but the result is
+      // still held for staff review (ai_assist present). unreadable stays empty
+      // because the fallback resolved them.
+    } else {
+      const definitions = Array.isArray(body.definitions)
+        ? (body.definitions as string[])
+        : [];
+      for (const err of parsed.errors) {
+        const index = definitions.findIndex(
+          (d) => typeof d === "string" && d === err.definition,
+        );
+        unreadable.push({
+          index: index === -1 ? -1 : index,
+          definition: err.definition,
+          reason: err.reason,
+        });
+      }
     }
   }
 
@@ -384,8 +398,9 @@ function handlePreview(
   }
 
   // A preview predicts what a real submission would do: unreadable definitions
-  // cause a staff-review hold just like a real parse failure does.
-  const effectiveNeedsReview = needs_review || unreadable.length > 0;
+  // and AI-assisted results are both held for staff review.
+  const effectiveNeedsReview = needs_review || unreadable.length > 0 ||
+    ai_assist !== undefined;
   const status: "staff_review" | "decided" = effectiveNeedsReview
     ? "staff_review"
     : "decided";
@@ -403,5 +418,6 @@ function handlePreview(
     unreadable,
   };
   if (plan_summary !== undefined) response.plan_summary = plan_summary;
+  if (ai_assist !== undefined) response.ai_assist = ai_assist;
   return json(response);
 }
