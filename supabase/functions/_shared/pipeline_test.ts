@@ -11,17 +11,33 @@
  */
 
 import { answerRequest, type SqlClient } from "./pipeline.ts";
+import { decide, type HealthDataRequest } from "./decision.ts";
+
+function assertRuleMetadata(
+  response: Awaited<ReturnType<typeof answerRequest>>,
+  request: HealthDataRequest,
+) {
+  const expected = decide(request);
+  assert(response.rule_id === expected.rule_id, "rule_id must match decide()");
+  assert(
+    response.rules_version === expected.rules_version,
+    "rules_version must match decide()",
+  );
+  assert(response.rule_id.length > 0 && response.rules_version.length > 0);
+}
 
 Deno.test("flagged statistical and SPE requests hold all data until staff review", async () => {
   for (const template of [STAT_REQUEST, SPE_REQUEST]) {
     const sql = makeFakeSql();
-    const response = await answerRequest({
+    const request = {
       ...template,
       purpose: "Explore possible uses.",
       question: template === SPE_REQUEST
         ? "Aggregates are not enough."
         : "How many adults?",
-    }, sql);
+    };
+    const response = await answerRequest(request, sql);
+    assertRuleMetadata(response, request);
     assert(response.needs_review);
     assert(response.status === "staff_review");
     assert(response.answer === null);
@@ -151,6 +167,7 @@ function makeFakeSql(
 Deno.test("REJECT: answer is null and sql is never called", async () => {
   const sql = makeFakeSql();
   const resp = await answerRequest(REJECT_REQUEST, sql);
+  assertRuleMetadata(resp, REJECT_REQUEST);
   assert(resp.decision === "REJECT", `expected REJECT, got ${resp.decision}`);
   assert(resp.answer === null, "answer must be null for REJECT");
   assert(sql.calls === 0, `expected 0 sql calls, got ${sql.calls}`);
@@ -163,6 +180,7 @@ Deno.test("REJECT: answer is null and sql is never called", async () => {
 Deno.test("parse failure: needs_review is true, answer is null, parse_errors present", async () => {
   const sql = makeFakeSql();
   const resp = await answerRequest(PARSE_FAIL_REQUEST, sql);
+  assertRuleMetadata(resp, PARSE_FAIL_REQUEST);
   assert(
     resp.decision === "APPROVE_STATISTICAL",
     `expected APPROVE_STATISTICAL, got ${resp.decision}`,
@@ -196,6 +214,7 @@ Deno.test("APPROVE_STATISTICAL: runPlan is called, answer returned", async () =>
     [{ n: "950" }],
   ]);
   const resp = await answerRequest(STAT_REQUEST, sql);
+  assertRuleMetadata(resp, STAT_REQUEST);
   assert(
     resp.decision === "APPROVE_STATISTICAL",
     `expected APPROVE_STATISTICAL, got ${resp.decision}`,
@@ -247,6 +266,7 @@ Deno.test("APPROVE_SPE: createSpe is called, cohort_size and spe_schema returned
   ddlRows.push([{ n: "1900" }]);
   const sql = makeFakeSql(ddlRows);
   const resp = await answerRequest(SPE_REQUEST, sql);
+  assertRuleMetadata(resp, SPE_REQUEST);
   assert(
     resp.decision === "APPROVE_SPE",
     `expected APPROVE_SPE, got ${resp.decision}`,

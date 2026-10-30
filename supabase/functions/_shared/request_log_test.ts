@@ -1,5 +1,6 @@
 import { loadRequest, saveRequest } from "./request_log.ts";
 import type { PipelineResponse } from "./pipeline.ts";
+import { decide } from "./decision.ts";
 import { REQUEST_FIXTURES } from "./parser_fixtures.ts";
 import { createHandler, type RequestDatabase } from "../requests/handler.ts";
 
@@ -334,7 +335,7 @@ Deno.test("review: approval executes the same protected engine and updates the s
 
 Deno.test("review: REJECT override never reads patient data or creates an SPE", async () => {
   const fake = fakeSql();
-  await heldRequest(fake);
+  const held = await heldRequest(fake);
   const response = await createHandler(() => fake.sql)(post({
     ...staffReview,
     action: "override",
@@ -343,6 +344,13 @@ Deno.test("review: REJECT override never reads patient data or creates an SPE", 
   equal(response.status, 200);
   const result = await response.json();
   equal(result.decision, "REJECT");
+  equal(result.rule_id, held.rule_id);
+  equal(result.rules_version, held.rules_version);
+  const saved = await (await createHandler(() => fake.sql)(
+    new Request(base + "?id=R01"),
+  )).json();
+  equal(saved.rule_id, held.rule_id);
+  equal(saved.rules_version, held.rules_version);
   equal(result.status, "decided");
   equal(result.answer, null);
   assert(!("population" in result) && !("spe_schema" in result), "no data");
@@ -358,7 +366,7 @@ Deno.test("review: REJECT override never reads patient data or creates an SPE", 
 Deno.test("review: approving overrides use protected statistics and SPE paths", async () => {
   for (const decision of ["APPROVE_STATISTICAL", "APPROVE_SPE"]) {
     const fake = fakeSql();
-    await heldRequest(fake);
+    const held = await heldRequest(fake);
     patientResults(fake);
     const response = await createHandler(() => fake.sql)(post({
       ...staffReview,
@@ -368,6 +376,8 @@ Deno.test("review: approving overrides use protected statistics and SPE paths", 
     equal(response.status, 200);
     const result = await response.json();
     equal(result.decision, decision);
+    equal(result.rule_id, held.rule_id);
+    equal(result.rules_version, held.rules_version);
     equal(result.status, "decided");
     if (decision === "APPROVE_SPE") {
       equal(result.spe_schema, "spe_r01");
@@ -972,6 +982,8 @@ Deno.test("request log: postgres.js JSONB save/load round trip stores objects", 
   };
   const response: PipelineResponse = {
     request_id: "R01",
+    rule_id: decide(statistical).rule_id,
+    rules_version: decide(statistical).rules_version,
     decision: "APPROVE_STATISTICAL",
     articles: ["53", "69"],
     reason: "Research",
@@ -996,6 +1008,8 @@ Deno.test("request log: postgres.js JSONB save/load round trip stores objects", 
   const got = await result.json();
   equal(got.decision, response.decision);
   equal(got.answer, response.answer);
+  equal(got.rule_id, response.rule_id);
+  equal(got.rules_version, response.rules_version);
   const overview =
     await (await createHandler(() => fake.sql)(new Request(base))).json();
   equal(overview.requests[0].decision, response.decision);

@@ -29,6 +29,10 @@ export type SqlClient = EngineSqlClient & SpeSqlClient;
 /** Full API response shape (docs/api.md). */
 export interface PipelineResponse {
   request_id: string;
+  /** Rule selected by decide(), retained even after a staff override. */
+  rule_id: string;
+  /** Version of the decision rules used by decide(). */
+  rules_version: string;
   decision: "REJECT" | "APPROVE_STATISTICAL" | "APPROVE_SPE";
   articles: string[];
   reason: string;
@@ -103,7 +107,8 @@ export async function answerRequest(
     }
     decisionResult.reason = review.reason;
   }
-  const { decision, articles, reason, needs_review } = decisionResult;
+  const { decision, articles, reason, needs_review, rule_id, rules_version } =
+    decisionResult;
 
   if (decision === "REJECT" || needs_review) {
     // Explain a rejection or held decision without touching patient data.
@@ -121,6 +126,8 @@ export async function answerRequest(
     }
     const base: PipelineResponse = {
       request_id,
+      rule_id,
+      rules_version,
       decision,
       articles,
       reason,
@@ -151,6 +158,8 @@ export async function answerRequest(
     }
     const base: PipelineResponse = {
       request_id,
+      rule_id,
+      rules_version,
       decision,
       articles,
       reason,
@@ -197,6 +206,8 @@ export async function answerRequest(
 
   const base: PipelineResponse = {
     request_id,
+    rule_id,
+    rules_version,
     decision,
     articles,
     reason,

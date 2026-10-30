@@ -1,12 +1,12 @@
 # Two-minute jury demo — EHDS Health Data Access Body
 
-Use https://health-data-access-compass.lovable.app. This is the script for issue #19; the one-click Demo panel will follow this order later.
+Use https://health-data-access-compass.lovable.app. **Recording link: TODO — team to insert a video of at most two minutes.** This is a recording script, not a completed video. The frontend now includes a Demo panel under `/desk`; the manual sequence below is also available for recording.
 
 ## Recording setup
 
 - Use the unchanged JSON files in the sibling `TRACK-3-ehds/requests/` directory. Ground truth below is from its `expected.json`, not the illustrative values in `docs/api.md`.
 - Before recording, submit R02, R01, R08, R05 and R09 through the applicant request form so they are available in staff history. Keep the JSON ready to paste for the recorded submissions. Do not spend video time typing or loading files.
-- Click paths below describe controls by function: applicant/staff switch → request form or staff history → request result. The frontend is in a separate repository; exact form/history labels have not been verified offline. No existing Demo panel or fixture picker is assumed. Rehearse these paths before recording; use the prepared history entries if submission would exceed a slot.
+- Click paths below describe controls by function: applicant/staff switch → request form or staff history → request result. The frontend is in a separate repository. Rehearse the current labels before recording; use the prepared history entries if submission would exceed a slot.
 - Keep decision, cited articles, reason and result in the same frame. Prepare the eligibility annotation and metric card described below. Open browser developer tools → Network before recording if the Download error does not visibly include its HTTP status.
 
 ## Running order (0:00–2:00)
@@ -28,11 +28,11 @@ The quoted lines are the spoken script. The expected-result column is a checking
 
 ## Showing opt-outs without overstating the screen
 
-Prepare a clearly labelled **dataset eligibility** annotation: “20,000 synthetic patients · 839 opted out (Art. 71) · 19,161 eligible.” These totals come from the track's `data/README.md` and this repository's loading documentation; they are not a field in `expected.json` or the current request API. Use a video annotation beside R01 if the UI has no eligibility summary. The later Demo panel can display the same provenance-labelled summary.
+Prepare a clearly labelled **dataset eligibility** annotation: “20,000 synthetic patients · 839 opted out (Art. 71) · 19,161 eligible.” These totals come from the track's `data/README.md` and this repository's loading documentation. The current API also returns `population.eligible_patients` after successful execution; it does not return a separate opt-out count. Use a video annotation beside R01 if needed.
 
 The concrete application number to highlight is **R01 → Wien → adults = 3,247**, the eligible adult denominator for **263 / 3,247 × 100 = 8.1%**. It is a regional adult subset of the 19,161 eligible patients, not the overall eligible total. All statistical queries start from `public.eligible_patients`, which excludes opted-out patients before cohort filters, counts and percentage denominators; SPE selection uses the same eligible base. Neither a matching aggregate nor a caption alone proves source-level exclusion. The exclusion is supported by that query construction and the loaded dataset totals; do not claim that the result API exposes a separate opt-out audit count.
 
-For the download shot, the actual deployed route is `GET /spe-download?id=R05` (or `POST /spe-download` with `{"id":"R05"}`), as documented in `api.md`. The architecture diagram's `/spe/{id}/download` is conceptual. The exact error is:
+For the download shot, the actual deployed route is `GET /spe-download?id=R05` (or `POST /spe-download` with `{"id":"R05"}`), as documented in `api.md`. The exact error is:
 
 > Download blocked: data in a secure processing environment cannot be downloaded (EHDS Art. 73).
 

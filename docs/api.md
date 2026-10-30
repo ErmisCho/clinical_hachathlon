@@ -58,6 +58,8 @@ The response is the complete pipeline result:
 | Field                | Shape                                                                                                    |
 | -------------------- | -------------------------------------------------------------------------------------------------------- |
 | `request_id`         | Submitted `id`                                                                                           |
+| `rule_id`            | Rule ID selected by `decide()` from the versioned decision rules |
+| `rules_version`      | Version of the decision rules used by `decide()` |
 | `decision`           | `REJECT`, `APPROVE_STATISTICAL`, or `APPROVE_SPE`                                                        |
 | `articles`           | Array of article number strings                                                                          |
 | `reason`             | Explanation string                                                                                       |
@@ -71,6 +73,13 @@ The response is the complete pipeline result:
 | `population`         | Present only after successful execution: `{ "eligible_patients": number }` — count from the `eligible_patients` view (opted-out rows already excluded) |
 | `timeline`           | Ordered lifecycle events: `[{ "status": string, "at": string }]`. Statuses: `submitted`, `assessed`, `staff_review` (held only), `decided`, `fulfilled` (non-REJECT only). `at` is an ISO 8601 timestamp with milliseconds (e.g. `"2026-10-30T01:20:07.123Z"`). Present on POST, review, and `GET ?id`. The review endpoint returns the full timeline (all prior events plus new ones). |
 | `lifecycle_status`   | Last status in `timeline` (e.g. `"fulfilled"`). Backwards-compatible: top-level `status` stays `"staff_review"` or `"decided"` as before. |
+
+Both rule metadata fields are present on every pipeline response: rejection,
+review hold, parse failure, statistics and SPE. They are saved with the response
+in `request_log` and returned by POST, `POST /requests/review` and `GET ?id`.
+After a staff override they retain the rule and version produced by `decide()`;
+they describe the automated assessment, not the staff's replacement decision.
+Previously saved responses are not backfilled.
 
 The `explanation` object provides plain-language reasoning and verbatim regulation quotes:
 
