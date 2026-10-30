@@ -123,14 +123,13 @@ function parseArticle(artNum: number, html: string): ArticleData {
   if (paragraphs.length === 0) {
     // The article number is in <p class="oj-ti-art">, NOT in oj-normal,
     // so we collect ALL oj-normal paras.
-    // Bare point labels "(a)", "(b)" … are single-letter table-cell paras — skip them.
+    // Keep table-cell point labels so the joined text preserves the official points.
     const allParas: string[] = [];
     const pPattern = /<p[^>]*class="oj-normal"[^>]*>([\s\S]*?)<\/p>/g;
     let pm: RegExpExecArray | null;
     while ((pm = pPattern.exec(html)) !== null) {
       const t = cleanText(pm[1]);
-      if (/^\([a-z]\)$/.test(t)) continue; // skip lone "(a)" labels
-      if (t.length > 3) allParas.push(t);
+      if (t.length > 3 || /^\([a-z]\)$/.test(t)) allParas.push(t);
     }
     // Group by numbered paragraph openers "1.", "2.", …
     let cur: string[] = [];
