@@ -62,8 +62,9 @@ them and the view. Use trusted backend database access only.
 Once migrations and data are ready, the linked project's functions use
 `SUPABASE_DB_URL`, supplied by the hosted Supabase runtime. Ensure it is available
 server-side; never put a privileged database URL or service credential in the
-frontend. Function JWT verification is disabled in `supabase/config.toml`; this
-prototype has no staff authentication.
+frontend. Function JWT verification is disabled in `supabase/config.toml`.
+The review endpoint (`POST /requests/review`) requires a Supabase Auth session
+with `app_metadata.role = "staff"` (see "Creating a staff user" below).
 
 ```sh
 npx supabase functions deploy requests
@@ -75,6 +76,48 @@ The frontend is in [its own repository](https://github.com/ErmisCho/health-data-
 Configure its Supabase project URL and publishable/anon key for your deployment;
 this backend checkout does not contain the UI build. Keep secrets in environment
 variables or service secret stores, out of Git and recorded terminal output.
+
+## Creating a staff user
+
+Use `scripts/create-staff-user.ts` to create or update a staff account.  The
+script reads all credentials from environment variables and never accepts them
+from command-line arguments.
+
+Required environment variables:
+
+| Variable | Description |
+|---|---|
+| `SUPABASE_URL` | Your project REST URL (e.g. `https://xyz.supabase.co`) |
+| `SUPABASE_SERVICE_ROLE_KEY` | Service-role key (privileged — keep secret) |
+| `STAFF_EMAIL` | Email address for the staff account |
+| `STAFF_PASSWORD` | Password for the staff account (minimum 8 characters) |
+
+POSIX shell:
+
+```sh
+export SUPABASE_URL='https://YOUR_PROJECT.supabase.co'
+export SUPABASE_SERVICE_ROLE_KEY='YOUR_SERVICE_ROLE_KEY'
+export STAFF_EMAIL='staff@your-hdab.example'
+export STAFF_PASSWORD='a-strong-password'
+deno run --allow-net --allow-env scripts/create-staff-user.ts
+```
+
+PowerShell:
+
+```powershell
+$env:SUPABASE_URL = 'https://YOUR_PROJECT.supabase.co'
+$env:SUPABASE_SERVICE_ROLE_KEY = 'YOUR_SERVICE_ROLE_KEY'
+$env:STAFF_EMAIL = 'staff@your-hdab.example'
+$env:STAFF_PASSWORD = 'a-strong-password'
+deno run --allow-net --allow-env scripts/create-staff-user.ts
+```
+
+The script calls `POST /auth/v1/admin/users` with `email_confirm: true` and
+`app_metadata: { role: "staff" }`.  Re-running the command is safe — Supabase
+upserts by email.
+
+**Never commit credentials to the repository.**  Use `.env` files outside the
+checkout, Supabase project secrets, or a secrets manager.
 
 ## Evaluation
 

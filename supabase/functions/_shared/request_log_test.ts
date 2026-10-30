@@ -1,8 +1,22 @@
-import { loadRequest, saveRequest } from "./request_log.ts";
+﻿import { loadRequest, saveRequest } from "./request_log.ts";
 import type { PipelineResponse } from "./pipeline.ts";
 import { decide } from "./decision.ts";
 import { REQUEST_FIXTURES } from "./parser_fixtures.ts";
 import { createHandler, type RequestDatabase } from "../requests/handler.ts";
+
+/** Fake fetch that always returns a staff user â€” used by tests that need auth. */
+function staffFetch(_input: string, _init?: RequestInit): Promise<Response> {
+  return Promise.resolve(
+    new Response(
+      JSON.stringify({
+        id: "staff-test-uuid",
+        email: "reviewer@test.example",
+        app_metadata: { role: "staff" },
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    ),
+  );
+}
 
 function equal(actual: unknown, expected: unknown): void {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) {
@@ -237,18 +251,27 @@ function post(body: unknown, url = base): Request {
   return new Request(url, { method: "POST", body: JSON.stringify(body) });
 }
 
+/** Like post() but includes a Bearer token so the auth check passes. */
+function staffPost(body: unknown, url = base): Request {
+  return new Request(url, {
+    method: "POST",
+    headers: { "Authorization": "Bearer test-staff-token" },
+    body: JSON.stringify(body),
+  });
+}
+
 const staffReview = {
   action: "approve",
   request_id: "R01",
   reason: "Staff verified the purpose.",
-  staff_name: "Reviewer",
+  // staff_name is no longer sent from the client; the server reads it from the Auth token.
 };
 
 async function heldRequest(
   fake: ReturnType<typeof fakeSql>,
   definitions = statistical.definitions,
 ) {
-  const response = await createHandler(() => fake.sql)(post({
+  const response = await createHandler(() => fake.sql, staffFetch)(post({
     ...statistical,
     purpose: "Explore possible uses.",
     definitions,
@@ -291,12 +314,12 @@ function patientResults(fake: ReturnType<typeof fakeSql>) {
 Deno.test("review: approval executes the same protected engine and updates the staff queue", async () => {
   const fake = fakeSql();
   await heldRequest(fake);
-  const handler = createHandler(() => fake.sql);
+  const handler = createHandler(() => fake.sql, staffFetch);
   const before = await (await handler(new Request(base))).json();
   equal(before.requests[0].status, "staff_review");
   equal(before.requests[0].last_staff_action, null);
   patientResults(fake);
-  const response = await handler(post(staffReview, base + "/review"));
+  const response = await handler(staffPost(staffReview, base + "/review"));
   equal(response.status, 200);
   const result = await response.json();
   equal(result.status, "decided");
@@ -323,8 +346,9 @@ Deno.test("review: approval executes the same protected engine and updates the s
   );
   const after = await (await handler(new Request(base))).json();
   equal(after.requests[0].status, "decided");
-  equal(after.requests[0].last_staff_action.staff_name, "Reviewer");
-  equal((await handler(post(staffReview, base + "/review"))).status, 409);
+  // Unauthenticated GET: staff_name is masked; the DB has the email from the Auth token.
+  equal(after.requests[0].last_staff_action.staff_name, "Staff member");
+  equal((await handler(staffPost(staffReview, base + "/review"))).status, 409);
   equal(fake.actions.length, 1);
   assert(!("answer" in after.requests[0]), "queue omits statistics");
   assert(
@@ -336,7 +360,7 @@ Deno.test("review: approval executes the same protected engine and updates the s
 Deno.test("review: REJECT override never reads patient data or creates an SPE", async () => {
   const fake = fakeSql();
   const held = await heldRequest(fake);
-  const response = await createHandler(() => fake.sql)(post({
+  const response = await createHandler(() => fake.sql, staffFetch)(staffPost({
     ...staffReview,
     action: "override",
     decision: "REJECT",
@@ -346,7 +370,7 @@ Deno.test("review: REJECT override never reads patient data or creates an SPE", 
   equal(result.decision, "REJECT");
   equal(result.rule_id, held.rule_id);
   equal(result.rules_version, held.rules_version);
-  const saved = await (await createHandler(() => fake.sql)(
+  const saved = await (await createHandler(() => fake.sql, staffFetch)(
     new Request(base + "?id=R01"),
   )).json();
   equal(saved.rule_id, held.rule_id);
@@ -368,7 +392,7 @@ Deno.test("review: approving overrides use protected statistics and SPE paths", 
     const fake = fakeSql();
     const held = await heldRequest(fake);
     patientResults(fake);
-    const response = await createHandler(() => fake.sql)(post({
+    const response = await createHandler(() => fake.sql, staffFetch)(staffPost({
       ...staffReview,
       action: "override",
       decision,
@@ -405,7 +429,7 @@ Deno.test("review: parse failure remains held even after an approval or approvin
   for (const action of ["approve", "override"]) {
     const fake = fakeSql();
     await heldRequest(fake, []);
-    const response = await createHandler(() => fake.sql)(post({
+    const response = await createHandler(() => fake.sql, staffFetch)(staffPost({
       ...staffReview,
       action,
       ...(action === "override" ? { decision: "APPROVE_SPE" } : {}),
@@ -428,13 +452,13 @@ Deno.test("review: parse failure remains held even after an approval or approvin
 Deno.test("review: invalid fields fail before connection; missing and already decided requests fail safely", async () => {
   const handler = createHandler(() => {
     throw new Error("must not connect");
-  });
+  }, staffFetch);
   for (
     const body of [
       null,
       {},
       { ...staffReview, reason: " " },
-      { ...staffReview, staff_name: "" },
+      { ...staffReview, reason: "" },
       { ...staffReview, action: "delete" },
       { ...staffReview, request_id: "'" },
       { ...staffReview, decision: "REJECT" },
@@ -443,13 +467,18 @@ Deno.test("review: invalid fields fail before connection; missing and already de
       { ...staffReview, action: "override", decision: ["REJECT"] },
     ]
   ) {
-    equal((await handler(post(body, base + "/review"))).status, 400);
+    const req = new Request(base + "/review", {
+      method: "POST",
+      headers: { "Authorization": "Bearer test-token" },
+      body: JSON.stringify(body),
+    });
+    equal((await handler(req)).status, 400);
   }
   const fake = fakeSql();
-  const connected = createHandler(() => fake.sql);
-  equal((await connected(post(staffReview, base + "/review"))).status, 404);
+  const connected = createHandler(() => fake.sql, staffFetch);
+  equal((await connected(staffPost(staffReview, base + "/review"))).status, 404);
   await connected(post({ ...statistical, purpose: "insurance premiums" }));
-  equal((await connected(post(staffReview, base + "/review"))).status, 409);
+  equal((await connected(staffPost(staffReview, base + "/review"))).status, 409);
   equal(fake.actions.length, 0);
 });
 
@@ -463,7 +492,7 @@ Deno.test("review: failed audit rolls back the response update", async () => {
     }
     return original(text, params);
   };
-  const response = await createHandler(() => fake.sql)(post({
+  const response = await createHandler(() => fake.sql, staffFetch)(staffPost({
     ...staffReview,
     action: "override",
     decision: "REJECT",
@@ -484,11 +513,11 @@ Deno.test("review: failed audit rolls back the response update", async () => {
 Deno.test("review: duplicate ids review only the latest saved submission", async () => {
   const fake = fakeSql();
   await heldRequest(fake);
-  const handler = createHandler(() => fake.sql);
+  const handler = createHandler(() => fake.sql, staffFetch);
   await handler(post({ ...statistical, purpose: "Explore possible uses." }));
   equal(
     (await handler(
-      post(
+      staffPost(
         { ...staffReview, action: "override", decision: "REJECT" },
         base + "/review",
       ),
@@ -565,7 +594,7 @@ Deno.test("requests: POST runs real statistical pipeline, saves full JSON, only 
     [{ value: "Wien" }, { value: "Tirol" }],
     [{ g0: "Wien", n: "25", patient_id: "secret", birth_date: "secret" }],
   ]);
-  const response = await createHandler(() => fake.sql)(post(statistical));
+  const response = await createHandler(() => fake.sql, staffFetch)(post(statistical));
   equal(response.status, 200);
   const result = await response.json();
   equal(result.decision, "APPROVE_STATISTICAL");
@@ -603,7 +632,7 @@ Deno.test("requests: POST runs real statistical pipeline, saves full JSON, only 
 
 Deno.test("requests: rejected requests are saved without querying patient data", async () => {
   const fake = fakeSql();
-  const response = await createHandler(() => fake.sql)(post({
+  const response = await createHandler(() => fake.sql, staffFetch)(post({
     ...statistical,
     id: "R02",
     purpose: "Set insurance premiums",
@@ -627,7 +656,7 @@ Deno.test("requests: rejected requests are saved without querying patient data",
 
 Deno.test("requests: parse failures are saved as review results", async () => {
   const fake = fakeSql();
-  const response = await createHandler(() => fake.sql)(
+  const response = await createHandler(() => fake.sql, staffFetch)(
     post({ ...statistical, definitions: [] }),
   );
   equal(response.status, 200);
@@ -661,7 +690,7 @@ Deno.test("requests: lookup supports query and decoded path ids with determinist
     ]
   ) {
     const fake = fakeSql([[{ id: 1, response: saved }]]);
-    const response = await createHandler(() => fake.sql)(new Request(url));
+    const response = await createHandler(() => fake.sql, staffFetch)(new Request(url));
     equal(response.status, 200);
     const got = await response.json();
     equal(got.decision, saved.decision);
@@ -680,7 +709,7 @@ Deno.test("requests: lookup supports query and decoded path ids with determinist
 Deno.test("requests: lookup binds ids as values", async () => {
   const fake = fakeSql();
   const id = "R01' OR 1=1 --";
-  const response = await createHandler(() => fake.sql)(
+  const response = await createHandler(() => fake.sql, staffFetch)(
     new Request(base + "?id=" + encodeURIComponent(id)),
   );
   equal(response.status, 404);
@@ -709,7 +738,7 @@ Deno.test("requests: overview selects and projects only safe fields for every hi
       schema: "secret",
     }],
   ]);
-  const response = await createHandler(() => fake.sql)(new Request(base));
+  const response = await createHandler(() => fake.sql, staffFetch)(new Request(base));
   equal(response.status, 200);
   equal(await response.json(), {
     requests: [{
@@ -752,7 +781,7 @@ Deno.test("requests: overview limits decided history to the newest 100 rows", as
       response: { decision: "REJECT", needs_review: false },
     });
   }
-  const response = await createHandler(() => fake.sql)(new Request(base));
+  const response = await createHandler(() => fake.sql, staffFetch)(new Request(base));
   equal(response.status, 200);
   const result = await response.json();
   equal(
@@ -771,7 +800,7 @@ Deno.test("requests: overview retains old held rows, including legacy JSON strin
       response: index === 0 ? JSON.stringify(response) : response,
     });
   }
-  const response = await createHandler(() => fake.sql)(new Request(base));
+  const response = await createHandler(() => fake.sql, staffFetch)(new Request(base));
   equal(response.status, 200);
   const result = await response.json();
   equal(result.requests.map((row: { request_id: string }) => row.request_id), [
@@ -795,7 +824,7 @@ Deno.test("requests: overview never drops held rows when the queue exceeds 100",
       response: { needs_review: index < 110 },
     });
   }
-  const response = await createHandler(() => fake.sql)(new Request(base));
+  const response = await createHandler(() => fake.sql, staffFetch)(new Request(base));
   equal(response.status, 200);
   const result = await response.json();
   equal(
@@ -807,7 +836,7 @@ Deno.test("requests: overview never drops held rows when the queue exceeds 100",
 Deno.test("requests: empty overview includes both lists", async () => {
   const fake = fakeSql();
   equal(
-    await (await createHandler(() => fake.sql)(new Request(base + "/"))).json(),
+    await (await createHandler(() => fake.sql, staffFetch)(new Request(base + "/"))).json(),
     { requests: [], downloads: [], staff_actions: [] },
   );
 });
@@ -815,15 +844,20 @@ Deno.test("requests: empty overview includes both lists", async () => {
 Deno.test("requests: overview includes staff_actions newest first, limit 200, no private fields", async () => {
   const fake = fakeSql();
   await heldRequest(fake);
-  const handler = createHandler(() => fake.sql);
+  const handler = createHandler(() => fake.sql, staffFetch);
   patientResults(fake);
-  await handler(post(staffReview, base + "/review"));
-  const overview = await (await handler(new Request(base))).json();
+  await handler(staffPost(staffReview, base + "/review"));
+  // Use an authenticated GET so staff_name is not masked.
+  const authenticatedGet = new Request(base, {
+    headers: { "Authorization": "Bearer test-staff-token" },
+  });
+  const overview = await (await handler(authenticatedGet)).json();
   equal(overview.staff_actions.length, 1);
   const sa = overview.staff_actions[0];
   equal(sa.request_id, "R01");
   equal(sa.action, "approve");
-  equal(sa.staff_name, "Reviewer");
+  // staff_name now comes from the verified Auth token email, not a typed field.
+  equal(sa.staff_name, "reviewer@test.example");
   equal(sa.reason, staffReview.reason);
   assert(typeof sa.created_at === "string", "created_at must be present");
   assert(!("id" in sa), "staff_action id must not leak");
@@ -893,7 +927,7 @@ Deno.test("requests: overview query failure returns only SQLSTATE and stage", as
       code: "42501",
     });
   };
-  const response = await createHandler(() => fake.sql)(new Request(base));
+  const response = await createHandler(() => fake.sql, staffFetch)(new Request(base));
   equal(response.status, 500);
   equal(await response.json(), {
     error: "internal server error",
@@ -908,7 +942,7 @@ Deno.test("requests: failed history insertion never reports successful submissio
   fake.sql.unsafe = () => {
     throw new Error("insert failed");
   };
-  const response = await createHandler(() => fake.sql)(
+  const response = await createHandler(() => fake.sql, staffFetch)(
     post({ ...statistical, purpose: "insurance premiums" }),
   );
   equal(response.status, 500);
@@ -918,7 +952,7 @@ Deno.test("requests: failed history insertion never reports successful submissio
 Deno.test("requests: cleanup failure preserves saved response", async () => {
   const fake = fakeSql();
   fake.sql.end = () => Promise.reject(new Error("private connection details"));
-  const response = await createHandler(() => fake.sql)(new Request(base));
+  const response = await createHandler(() => fake.sql, staffFetch)(new Request(base));
   equal(response.status, 200);
   equal(await response.json(), { requests: [], downloads: [], staff_actions: [] });
 });
@@ -933,7 +967,7 @@ Deno.test("requests: SPE result saves only cohort size and schema, never record 
         : [],
     );
   };
-  const response = await createHandler(() => fake.sql)(
+  const response = await createHandler(() => fake.sql, staffFetch)(
     post(REQUEST_FIXTURES.find((request) => request.id === "R05")),
   );
   equal(response.status, 200);
@@ -956,7 +990,7 @@ Deno.test("requests: SPE result saves only cohort size and schema, never record 
 
 Deno.test("requests: resubmissions append history instead of updating or upserting", async () => {
   const fake = fakeSql();
-  const handler = createHandler(() => fake.sql);
+  const handler = createHandler(() => fake.sql, staffFetch);
   for (const purpose of ["insurance premiums", "advertising"]) {
     equal((await handler(post({ ...statistical, purpose }))).status, 200);
   }
@@ -1001,7 +1035,7 @@ Deno.test("request log: postgres.js JSONB save/load round trip stores objects", 
   assert(loaded !== null, "must load response");
   equal(loaded.decision, response.decision);
   equal(loaded.answer, response.answer);
-  const result = await createHandler(() => fake.sql)(
+  const result = await createHandler(() => fake.sql, staffFetch)(
     new Request(base + "?id=R01"),
   );
   equal(result.status, 200);
@@ -1011,7 +1045,7 @@ Deno.test("request log: postgres.js JSONB save/load round trip stores objects", 
   equal(got.rule_id, response.rule_id);
   equal(got.rules_version, response.rules_version);
   const overview =
-    await (await createHandler(() => fake.sql)(new Request(base))).json();
+    await (await createHandler(() => fake.sql, staffFetch)(new Request(base))).json();
   equal(overview.requests[0].decision, response.decision);
   equal(overview.requests[0].articles, response.articles);
   equal(overview.requests[0].needs_review, false);
@@ -1038,7 +1072,7 @@ Deno.test("request log: existing JSON string rows load as objects and populate o
   assert(loaded !== null, "must load response");
   equal(loaded.decision, response.decision);
   equal(loaded.answer, response.answer);
-  const handler = createHandler(() => fake.sql);
+  const handler = createHandler(() => fake.sql, staffFetch);
   for (const url of [base + "?id=R05", base + "/R05"]) {
     const result = await handler(new Request(url));
     equal(result.status, 200);
@@ -1087,7 +1121,7 @@ Deno.test("lifecycle: statistical submission records submitted+assessed+decided+
     [{ value: "Wien" }, { value: "Tirol" }],
     [{ g0: "Wien", n: "25" }, { g0: "Tirol", n: "4" }],
   ]);
-  const response = await createHandler(() => fake.sql)(post(statistical));
+  const response = await createHandler(() => fake.sql, staffFetch)(post(statistical));
   equal(response.status, 200);
   const result = await response.json();
   equal(result.decision, "APPROVE_STATISTICAL");
@@ -1106,7 +1140,7 @@ Deno.test("lifecycle: statistical submission records submitted+assessed+decided+
     ["submitted", "assessed", "decided", "fulfilled"],
   );
   // GET ?id returns timeline with DB timestamps and lifecycle_status.
-  const got = await (await createHandler(() => fake.sql)(new Request(base + "?id=R01"))).json();
+  const got = await (await createHandler(() => fake.sql, staffFetch)(new Request(base + "?id=R01"))).json();
   assert(Array.isArray(got.timeline) && got.timeline.length === 4, "GET has 4 timeline events");
   equal(got.timeline[0].status, "submitted");
   equal(got.timeline[3].status, "fulfilled");
@@ -1160,7 +1194,7 @@ Deno.test("lifecycle: SPE submission records submitted+assessed+decided+fulfille
     return Promise.resolve([]);
   };
   const speRequest = REQUEST_FIXTURES.find((r) => r.id === "R05")!;
-  const response = await createHandler(() => fake.sql)(post(speRequest));
+  const response = await createHandler(() => fake.sql, staffFetch)(post(speRequest));
   equal(response.status, 200);
   const result = await response.json();
   equal(result.decision, "APPROVE_SPE");
@@ -1174,7 +1208,7 @@ Deno.test("lifecycle: SPE submission records submitted+assessed+decided+fulfille
 
 Deno.test("lifecycle: rejected submission records submitted+assessed+decided (no fulfilled)", async () => {
   const fake = fakeSql();
-  const response = await createHandler(() => fake.sql)(post({
+  const response = await createHandler(() => fake.sql, staffFetch)(post({
     ...statistical,
     id: "R02",
     purpose: "Set insurance premiums",
@@ -1203,12 +1237,12 @@ Deno.test("lifecycle: held submission records submitted+assessed+staff_review (n
   );
 });
 
-Deno.test("lifecycle: held→approved returns full timeline and lifecycle_status=fulfilled", async () => {
+Deno.test("lifecycle: heldâ†’approved returns full timeline and lifecycle_status=fulfilled", async () => {
   const fake = fakeSql();
   await heldRequest(fake);
   patientResults(fake);
-  const handler = createHandler(() => fake.sql);
-  const response = await handler(post(staffReview, base + "/review"));
+  const handler = createHandler(() => fake.sql, staffFetch);
+  const response = await handler(staffPost(staffReview, base + "/review"));
   equal(response.status, 200);
   const result = await response.json();
   equal(result.status, "decided");
@@ -1230,3 +1264,6 @@ Deno.test("lifecycle: held→approved returns full timeline and lifecycle_status
   ]);
   equal(got.lifecycle_status, "fulfilled");
 });
+
+
+

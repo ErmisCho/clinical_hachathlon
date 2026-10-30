@@ -15,20 +15,21 @@ export interface StaffReview {
   request_id: string;
   decision?: PipelineResponse["decision"];
   reason: string;
+  /** Set server-side from the verified Auth token; not accepted from the client body. */
   staff_name: string;
+  /** UUID from Supabase Auth; set server-side. */
+  staff_user_id: string;
 }
 
 /** Staff controls are accepted only on the review route, never from a submission. */
-export function validReview(value: unknown): value is StaffReview {
+export function validReview(value: unknown): value is Omit<StaffReview, "staff_name" | "staff_user_id"> {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const body = value as Record<string, unknown>;
   return (body.action === "approve" || body.action === "override") &&
     typeof body.request_id === "string" &&
     /^[A-Za-z0-9_]{1,59}$/.test(body.request_id) &&
-    ["reason", "staff_name"].every((key) =>
-      typeof body[key] === "string" && body[key].trim().length > 0 &&
-      body[key].length <= 8000
-    ) &&
+    typeof body.reason === "string" && body.reason.trim().length > 0 &&
+    body.reason.length <= 8000 &&
     (body.action === "approve"
       ? body.decision === undefined
       : typeof body.decision === "string" &&
@@ -57,6 +58,11 @@ export async function reviewRequest(
   review: StaffReview,
   hdab?: HdabConfig,
 ): Promise<PipelineResponse> {
+  // Both staff_name and staff_user_id must be set by the caller (handler.ts) from
+  // the verified Auth token.  Guard here so a programming error is caught early.
+  if (!review.staff_name || !review.staff_user_id) {
+    throw new ReviewError(500, "Staff identity not provided");
+  }
   const rows = await tx.unsafe(
     `SELECT id, request, response FROM public.request_log WHERE request_id = $1
      ORDER BY submitted_at DESC, id DESC LIMIT 1 FOR UPDATE`,
@@ -89,9 +95,9 @@ export async function reviewRequest(
   await tx`UPDATE public.request_log SET response = ${tx.json(response)}
     WHERE id = ${row.id}`;
   await tx`INSERT INTO public.staff_action
-    (request_id, request_log_id, action, decision, reason, staff_name)
+    (request_id, request_log_id, action, decision, reason, staff_name, staff_user_id)
     VALUES (${review.request_id}, ${row.id}, ${review.action}, ${response.decision},
-            ${review.reason}, ${review.staff_name})`;
+            ${review.reason}, ${review.staff_name}, ${review.staff_user_id})`;
   // Load prior events then append new ones — gives full timeline in the review response.
   const priorEvents = await loadEventsForLog(tx, row.id);
   const newEvents = await recordReviewEvents(

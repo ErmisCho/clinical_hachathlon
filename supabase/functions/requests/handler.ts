@@ -18,6 +18,7 @@ import {
   saveRequest,
 } from "../_shared/request_log.ts";
 import { ReviewError, reviewRequest, validReview } from "./review.ts";
+import { AuthError, type FetchFn, verifyStaffToken } from "./auth.ts";
 import { decide } from "../_shared/decision.ts";
 import { parseRequest } from "../_shared/parser.ts";
 import { explain } from "../_shared/explain.ts";
@@ -41,7 +42,10 @@ function json(body: unknown, status = 200): Response {
 }
 
 /** Test HTTP routing without starting Deno.serve or importing postgres. */
-export function createHandler(connect: () => RequestDatabase) {
+export function createHandler(
+  connect: () => RequestDatabase,
+  fetchFn?: FetchFn,
+) {
   return async (req: Request): Promise<Response> => {
     if (req.method === "OPTIONS") {
       return new Response(null, { status: 204, headers: CORS_HEADERS });
@@ -107,14 +111,42 @@ export function createHandler(connect: () => RequestDatabase) {
       return handlePreview(body, hdab);
     }
 
+    // ── Authentication: review route requires a valid staff token ──────────────
+    if (isReview) {
+      try {
+        await verifyStaffToken(req.headers.get("Authorization"), fetchFn);
+      } catch (err) {
+        if (err instanceof AuthError) {
+          return json({ error: err.message }, err.status);
+        }
+        return json({ error: "Authentication failed" }, 401);
+      }
+    }
+
     let sql: RequestDatabase | undefined;
     let stage = "connect";
     try {
       sql = connect();
       if (isReview && validReview(body)) {
+        // Resolve staff identity (token already verified above; call again to get id+email).
+        // We re-call here inside the SQL path so identity is always fresh.
+        let staffIdentity: { id: string; email: string };
+        try {
+          staffIdentity = await verifyStaffToken(
+            req.headers.get("Authorization"),
+            fetchFn,
+          );
+        } catch {
+          return json({ error: "Invalid or expired session" }, 401);
+        }
+        const fullReview = {
+          ...body,
+          staff_name: staffIdentity.email,
+          staff_user_id: staffIdentity.id,
+        };
         stage = "review_request";
         const response = await sql.begin((tx) =>
-          reviewRequest(tx as RequestDatabase, body, hdab)
+          reviewRequest(tx as RequestDatabase, fullReview, hdab)
         );
         stage = "serialize";
         return json(response);
@@ -142,6 +174,16 @@ export function createHandler(connect: () => RequestDatabase) {
           ? json(response)
           : json({ error: "request not found" }, 404);
       }
+      // Determine whether the caller is authenticated as staff so we know
+      // whether to expose real staff emails in the overview response.
+      let isStaffCaller = false;
+      try {
+        await verifyStaffToken(req.headers.get("Authorization"), fetchFn);
+        isStaffCaller = true;
+      } catch {
+        // Not authenticated — that's fine for the read-only overview.
+      }
+
       stage = "list_requests";
       const requests = await listRequests(sql);
       stage = "list_downloads";
@@ -153,29 +195,44 @@ export function createHandler(connect: () => RequestDatabase) {
       stage = "list_staff_actions";
       const staffActions = await listStaffActions(sql);
       stage = "serialize";
+
+      // Helper: mask staff email for public callers.
+      const maskName = (name: unknown) =>
+        isStaffCaller ? String(name ?? "") : "Staff member";
+
       return json({
-        requests: requests.map((row) => ({
-          request_id: row.request_id,
-          submitted_at: row.submitted_at,
-          decision: row.decision,
-          articles: row.articles,
-          needs_review: row.needs_review,
-          status: row.needs_review ? "staff_review" : "decided",
-          last_staff_action: row.last_staff_action ?? null,
-          spe_schema: row.spe_schema ?? null,
-        })),
+        requests: requests.map((row) => {
+          const lastAction = row.last_staff_action as
+            | Record<string, unknown>
+            | null
+            | undefined;
+          return {
+            request_id: row.request_id,
+            submitted_at: row.submitted_at,
+            decision: row.decision,
+            articles: row.articles,
+            needs_review: row.needs_review,
+            status: row.needs_review ? "staff_review" : "decided",
+            last_staff_action: lastAction
+              ? { ...lastAction, staff_name: maskName(lastAction.staff_name) }
+              : null,
+            spe_schema: row.spe_schema ?? null,
+          };
+        }),
         downloads: downloads.map((row) => ({
           request_id: row.request_id,
           attempted_at: row.attempted_at,
         })),
-        staff_actions: staffActions.map((row) => ({
-          request_id: row.request_id,
-          action: row.action,
-          decision: row.decision,
-          reason: row.reason,
-          staff_name: row.staff_name,
-          created_at: row.created_at,
-        })),
+        staff_actions: (staffActions as Record<string, unknown>[]).map(
+          (row) => ({
+            request_id: row.request_id,
+            action: row.action,
+            decision: row.decision,
+            reason: row.reason,
+            staff_name: maskName(row.staff_name),
+            created_at: row.created_at,
+          }),
+        ),
       });
     } catch (error) {
       if (error instanceof ReviewError) {
