@@ -135,3 +135,54 @@ Deno.test("preview: missing required field returns 400", async () => {
   const res = await handler(previewRequest({ purpose: "research" }));
   assert(res.status === 400, `expected 400, got ${res.status}`);
 });
+
+// ---------------------------------------------------------------------------
+// 5. needs_review + status propagation
+// ---------------------------------------------------------------------------
+
+Deno.test("preview: clean R01 returns needs_review=false and status='decided'", async () => {
+  const res = await handler(previewRequest(R01_BODY));
+  assert(res.status === 200, `expected 200, got ${res.status}`);
+  const body = await res.json() as {
+    needs_review: boolean;
+    status: string;
+    unreadable: unknown[];
+  };
+  assert(body.needs_review === false, "clean R01 must not be flagged for review");
+  assert(body.status === "decided", `expected status 'decided', got ${body.status}`);
+  assert(Array.isArray(body.unreadable) && body.unreadable.length === 0, "unreadable must be empty");
+});
+
+Deno.test("preview: unreadable definition sets needs_review=true and status='staff_review'", async () => {
+  const body = {
+    ...R01_BODY,
+    definitions: [
+      ...R01_BODY.definitions,
+      "Flurb = patients who zorbled in the frobnitz",
+    ],
+  };
+  const res = await handler(previewRequest(body));
+  assert(res.status === 200, `expected 200, got ${res.status}`);
+  const result = await res.json() as {
+    needs_review: boolean;
+    status: string;
+    unreadable: { index: number; definition: string; reason: string }[];
+  };
+  assert(
+    result.unreadable.length >= 1,
+    "must report the unreadable definition",
+  );
+  assert(
+    result.unreadable.some((u) => u.index === 4),
+    `expected index 4 in unreadable, got: ${JSON.stringify(result.unreadable)}`,
+  );
+  assert(
+    result.needs_review === true,
+    "needs_review must be true when there is an unreadable definition",
+  );
+  assert(
+    result.status === "staff_review",
+    `expected status 'staff_review', got ${result.status}`,
+  );
+});
+

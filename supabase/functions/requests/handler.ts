@@ -239,6 +239,7 @@ export interface PreviewResponse {
   articles: string[];
   reason: string;
   needs_review: boolean;
+  status: "staff_review" | "decided";
   rule: string;
   trigger_phrases: string[];
   plan_summary?: string;
@@ -296,11 +297,19 @@ function handlePreview(body: Record<string, unknown>): Response {
     // ignore — rule stays empty
   }
 
+  // A preview predicts what a real submission would do: unreadable definitions
+  // cause a staff-review hold just like a real parse failure does.
+  const effectiveNeedsReview = needs_review || unreadable.length > 0;
+  const status: "staff_review" | "decided" = effectiveNeedsReview
+    ? "staff_review"
+    : "decided";
+
   const response: PreviewResponse = {
     decision,
     articles,
     reason,
-    needs_review,
+    needs_review: effectiveNeedsReview,
+    status,
     rule,
     trigger_phrases,
     unreadable,
