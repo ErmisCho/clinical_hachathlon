@@ -21,6 +21,7 @@ import {
   type ExtraProhibitedRule,
   type HealthDataRequest,
 } from "./decision.ts";
+import { computeDeadline, type DecisionDeadline } from "./deadline.ts";
 import { parseRequest } from "./parser.ts";
 import { attemptFallback, type AiAssist } from "./llm_fallback.ts";
 import { runPlan, type SqlClient as EngineSqlClient } from "./engine.ts";
@@ -80,6 +81,8 @@ export interface PipelineResponse {
   timeline?: { status: string; at: string }[];
   /** Last status in the timeline (e.g. "fulfilled"). Backwards-compatible addition: top-level status stays "staff_review"|"decided". */
   lifecycle_status?: string | null;
+  /** Statutory decision deadline derived from submission date and application type. */
+  deadline?: DecisionDeadline | null;
 }
 
 /** Query the count of eligible patients (opted-out rows are excluded by the view). */
@@ -104,6 +107,14 @@ export async function answerRequest(
 ): Promise<PipelineResponse> {
   const req = request as HealthDataRequest;
   const request_id = typeof req?.id === "string" ? req.id : "";
+  const deadline = computeDeadline(
+    typeof (req as Record<string, unknown>)?.requested_as === "string"
+      ? String((req as Record<string, unknown>).requested_as)
+      : "",
+    typeof (req as Record<string, unknown>)?.submitted === "string"
+      ? String((req as Record<string, unknown>).submitted)
+      : "",
+  );
 
   // Step 1 — decide first; never touch patient data for a REJECT.
   const decisionResult = decide(req, hdab?.extra_prohibited, hdab?.code);
@@ -152,6 +163,7 @@ export async function answerRequest(
     };
     if (explanationField) base.explanation = explanationField;
     if (explanation_error) base.explanation_error = explanation_error;
+    if (deadline != null) base.deadline = deadline;
     return base;
   }
 
@@ -201,6 +213,7 @@ export async function answerRequest(
     };
     if (explanationField) base.explanation = explanationField;
     if (explanation_error) base.explanation_error = explanation_error;
+    if (deadline != null) base.deadline = deadline;
     return base;
   }
 
@@ -238,6 +251,7 @@ export async function answerRequest(
     if (ai_assist) base.ai_assist = ai_assist;
     if (explanationField) base.explanation = explanationField;
     if (explanation_error) base.explanation_error = explanation_error;
+    if (deadline != null) base.deadline = deadline;
     return base;
   }
 
@@ -285,5 +299,6 @@ export async function answerRequest(
   if (spe_schema) base.spe_schema = spe_schema;
   if (explanationField) base.explanation = explanationField;
   if (explanation_error) base.explanation_error = explanation_error;
+  if (deadline != null) base.deadline = deadline;
   return base;
 }
