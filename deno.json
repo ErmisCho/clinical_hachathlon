@@ -6,6 +6,7 @@
     "include": [
       "supabase/functions/_shared/**/*_test.ts",
       "supabase/functions/requests/*_test.ts",
+      "supabase/functions/register/*_test.ts",
       "scripts/**/*_test.ts"
     ]
   },

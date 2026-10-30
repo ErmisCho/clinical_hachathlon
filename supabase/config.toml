@@ -418,5 +418,8 @@ enabled = true
 [functions.requests]
 verify_jwt = false
 
+[functions.register]
+verify_jwt = false
+
 [functions.spe-download]
 verify_jwt = false

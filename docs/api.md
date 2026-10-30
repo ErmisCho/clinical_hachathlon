@@ -340,6 +340,60 @@ identifies the failing step: `connect`, `list_requests`, `list_downloads`,
 Only the code and stage are logged for these failures; exception text, SQL,
 request bodies, row data, and stack traces are never returned.
 
+## `GET /register`
+
+Public transparency register, with JWT verification disabled. GET only; OPTIONS
+returns 204. CORS allows origin `*`, headers `authorization, x-client-info, apikey,
+content-type`, and methods `GET, OPTIONS`. Other methods return 405 and unknown
+paths return 404. Internal failures return 500 with
+`{ "error": "internal server error", "code": "42501", "stage": "list" }`.
+`code` is a five-character SQLSTATE when available, otherwise the error name
+(or `Error`). `stage` is `connect`, `list` (query), or `build` (public projection).
+Only code and stage are logged; messages and saved data are never disclosed.
+
+```json
+{
+  "entries": [{
+    "reference": "HDAB-2026-000123",
+    "date": "2026-10-30",
+    "organisation_type": "Research institution",
+    "purpose_category": "scientific research",
+    "decision": "APPROVE_STATISTICAL",
+    "articles": ["53", "69"]
+  }]
+}
+```
+
+Selects the latest submission per `request_id` (server `submitted_at` descending,
+then row id descending), then excludes responses with `needs_review: true` and
+returns at most 100, newest first. A newer held submission hides any older decision
+for that request. There is no pagination; query parameters do not change the limit.
+Empty history returns `{ "entries": [] }`. Legacy JSON-string objects are supported.
+
+SQL transfers only the row id, request id and submission timestamp, the request's
+`requested_as`, `requested_format`, `purpose`, `question`, `definitions` and
+`applicant.organisation`, and the response's `decision`, `articles` and
+`needs_review`. Whole request/response JSONB values and answers never cross the
+database connection. `decide()` currently reads only `requested_as`, `purpose`
+and `question`; the other projected request fields retain the minimal request shape.
+
+`reference` uses only the database row id and submission year, never the applicant's
+request identifier. `date` is the server submission date in UTC, without a time.
+Organisation keyword categories are Research institution (university/research/institute),
+Healthcare provider (hospital/clinic), Public body (ministry/agency/authority/public),
+Insurer (insurance/insurer), Company (pharma/company/GmbH/AG/Ltd/marketing), or Other.
+Insurer and explicit company terms take priority, then research, healthcare and
+public terms; thus a marketing agency is a Company and a public agency a Public body.
+`purpose_category` is the standard rule label from `decision_rules.json`, selected
+by rerunning the pure `decide()` on the saved request; it is never free text.
+`decision` and legal article numbers come from the saved response, preserving staff
+overrides. Only recognised decisions and article numbers are published.
+
+The response explicitly projects these six fields. It never includes personal or
+organisation names, original request ids, purpose/question text, definitions,
+answers, cohort sizes, SPE schema names, staff details or patient data. It reads
+only `public.request_log`; it never queries patient tables.
+
 ## `GET /spe-download?id=R05` or `POST /spe-download`
 
 The deployed download function is named `spe-download`; there is no
