@@ -1,5 +1,5 @@
 {
-  "version": "1.0.1",
+  "version": "1.0.2",
   "rules": [
     {
       "id": "P01",
@@ -181,6 +181,41 @@
         "We will not share data with any third parties outside our research group.",
         "No third-party access is planned; all analysis is internal.",
         "We never share patient data with third parties; see our data governance policy."
+      ]
+    },
+    {
+      "id": "P09",
+      "kind": "prohibited",
+      "article_ref": "54",
+      "label": "credit scoring / loan eligibility and conditions (Art. 54(1)(b))",
+      "phrases": [
+        "\\bcredit\\s+(?:scor\\w*|decisions?|eligibility)\\b",
+        "\\bcreditworthiness\\b",
+        "\\b(?:lower|reduce|restrict|adjust|set|modify)\\w*\\b[^.;!?]*\\b(?:borrowing|credit)\\s+limits?\\b",
+        "\\b(?:refus|deny|deni|reject|exclud)\\w*\\b[^.;!?]*\\b(?:credit|loans?|borrowers?)\\b",
+        "\\b(?:loan|credit)\\s+(?:refusal|denial|rejection)\\b",
+        "\\b(?:modify|modif|chang|adjust|set|rais|increas)\\w*\\b[^.;!?]*\\b(?:loan\\s+(?:conditions?|terms?|interest\\s+rates?)|conditions?\\s+of\\s+loans?)\\b"
+      ],
+      "examples": [
+        "We call this financial wellbeing research. The bank will use the health results for credit scoring: customers with a poorer predicted health outlook will receive lower borrowing limits or be refused a loan.",
+        "Use health results for credit decisions and loan eligibility.",
+        "Assess customers' creditworthiness using predicted illness.",
+        "Lower borrowing limits based on health outcomes.",
+        "Reduce credit limits for customers with chronic disease.",
+        "Refuse credit to applicants with a poorer health outlook.",
+        "Deny loans based on predicted health risks.",
+        "Use health data for loan refusal.",
+        "Modify loan conditions based on health predictions.",
+        "Change the conditions of loans using health results.",
+        "Set loan interest rates using predicted illness."
+      ],
+      "counter_examples": [
+        "We will not use the data for credit decisions",
+        "We won't use health results for credit scoring or creditworthiness.",
+        "We will never lower borrowing limits or refuse credit.",
+        "We will not modify loan conditions; this is clinical research.",
+        "Research on household debt and health outcomes.",
+        "Research on the association between loans and mental health outcomes."
       ]
     },
     {

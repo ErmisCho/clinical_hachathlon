@@ -19,7 +19,8 @@ export interface JuryExpected {
   decision: PipelineResponse["decision"];
   articles: string[];
   rationale: string;
-  parse: "supported" | "review";
+  parse: "supported" | "answer" | "review";
+  needs_review?: boolean;
   plan?: Omit<QueryPlan, "request_id">;
   spe?: { tables: string[]; loincs: string[] };
 }

@@ -155,6 +155,11 @@ Deno.test("disguised prohibited actions take priority in either purpose or quest
       "Develop alcoholic beverages.",
       "Recover identities from pseudonyms.",
       "Link pseudonyms to names.",
+      "Use health results for credit scoring.",
+      "Assess creditworthiness using health predictions.",
+      "Lower borrowing limits based on predicted illness.",
+      "Refuse credit based on health outcomes.",
+      "Modify loan conditions based on health predictions.",
     ]
   ) {
     for (const field of ["purpose", "question"]) {
@@ -314,6 +319,35 @@ Deno.test("negated prohibited purpose: 'never re-identify patients' → approved
   assert(
     result.decision !== "REJECT",
     `Negated re-identification should not be rejected, got ${result.decision}`,
+  );
+});
+
+Deno.test("credit disclaimers and household debt research do not reject", () => {
+  for (
+    const purpose of [
+      "We will not use the data for credit decisions",
+      "We won't use the data for credit scoring or creditworthiness.",
+      "We will never lower borrowing limits or refuse credit.",
+      "We will not modify loan conditions; this is clinical research.",
+      "Research on household debt and health outcomes.",
+      "Research on the association between loans and mental health outcomes.",
+    ]
+  ) {
+    assert(
+      decide({ requested_as: "health data request", purpose }).decision !==
+        "REJECT",
+      "Safe credit-related purpose rejected: " + purpose,
+    );
+  }
+  const result = decide({
+    requested_as: "health data request",
+    purpose:
+      "We will not use the data for credit scoring. We will refuse loans based on predicted illness.",
+  });
+  assert(
+    result.decision === "REJECT" && result.articles.includes("54") &&
+      result.rule_id === "P09",
+    "A credit disclaimer must not conceal an actual prohibited lending use",
   );
 });
 
