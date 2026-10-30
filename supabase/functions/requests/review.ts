@@ -3,7 +3,11 @@ import {
   type PipelineResponse,
   type SqlClient,
 } from "../_shared/pipeline.ts";
-import type { RequestLogSql } from "../_shared/request_log.ts";
+import {
+  recordReviewEvents,
+  reviewStatuses,
+  type RequestLogSql,
+} from "../_shared/request_log.ts";
 
 export interface StaffReview {
   action: "approve" | "override";
@@ -86,5 +90,11 @@ export async function reviewRequest(
     (request_id, request_log_id, action, decision, reason, staff_name)
     VALUES (${review.request_id}, ${row.id}, ${review.action}, ${response.decision},
             ${review.reason}, ${review.staff_name})`;
-  return response;
+  await recordReviewEvents(tx, row.id, review.request_id, response);
+  // Attach a timeline summary to the review response.
+  const timeline = reviewStatuses(response).map((status) => ({
+    status,
+    at: "",
+  }));
+  return { ...response, timeline };
 }

@@ -8,8 +8,10 @@ import {
   listRequests,
   listStaffActions,
   loadRequest,
+  recordEvents,
   type RequestLogSql,
   saveRequest,
+  submissionStatuses,
 } from "../_shared/request_log.ts";
 import { ReviewError, reviewRequest, validReview } from "./review.ts";
 import { decide } from "../_shared/decision.ts";
@@ -110,9 +112,15 @@ export function createHandler(connect: () => RequestDatabase) {
         stage = "answer_request";
         const response = await answerRequest(body, sql);
         stage = "save_request";
-        await saveRequest(sql, body, response);
+        const { logId } = await saveRequest(sql, body, response);
+        await recordEvents(sql, logId, response.request_id, response);
         stage = "serialize";
-        return json(response);
+        // Attach a timeline (no DB timestamps on first response; real timestamps on GET).
+        const timeline = submissionStatuses(response).map((status) => ({
+          status,
+          at: "",
+        }));
+        return json({ ...response, timeline });
       }
       if (id !== null) {
         stage = "load_request";

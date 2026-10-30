@@ -69,6 +69,7 @@ The response is the complete pipeline result:
 | `explanation`        | Present when quote verification passes (see below); omitted otherwise                                   |
 | `explanation_error`  | Present when explanation could not be verified; omitted otherwise                                        |
 | `population`         | Present only after successful execution: `{ "eligible_patients": number }` — count from the `eligible_patients` view (opted-out rows already excluded) |
+| `timeline`           | Ordered lifecycle events: `[{ "status": string, "at": string }]`. Statuses: `submitted`, `assessed`, `staff_review` (held only), `decided`, `fulfilled` (non-REJECT only). `at` is an ISO 8601 timestamp from the DB; empty string in POST responses (DB timestamps are present on `GET ?id`). |
 
 The `explanation` object provides plain-language reasoning and verbatim regulation quotes:
 

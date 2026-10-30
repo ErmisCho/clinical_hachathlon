@@ -22,6 +22,7 @@ function fakeSql(results: Record<string, unknown>[][] = []) {
   const calls: { text: string; params: unknown[] }[] = [];
   let closed = 0;
   const actions: Record<string, unknown>[] = [];
+  const events: { request_log_id: unknown; request_id: unknown; status: string; at: string }[] = [];
   const stored: { request_id: unknown; request: unknown; response: unknown }[] =
     [];
   const sql: RequestDatabase = Object.assign(
@@ -47,6 +48,15 @@ function fakeSql(results: Record<string, unknown>[][] = []) {
             response: JSON.parse(JSON.stringify(params[2])),
           });
         }
+        if (text.includes("INSERT INTO public.request_event")) {
+          events.push({
+            request_log_id: params[0],
+            request_id: params[1],
+            status: String(params[2]),
+            at: "2026-10-30T12:00:00Z",
+          });
+          return Promise.resolve([]);
+        }
         if (results.length) return Promise.resolve(results.shift()!);
         if (
           text.includes("SELECT id, request, response FROM public.request_log")
@@ -56,6 +66,30 @@ function fakeSql(results: Record<string, unknown>[][] = []) {
           );
           return Promise.resolve(
             index < 0 ? [] : [{ id: index + 1, ...stored[index] }],
+          );
+        }
+        // saveRequest: retrieve the id of the just-inserted row.
+        if (
+          text.includes("SELECT id FROM public.request_log") &&
+          text.includes("ORDER BY submitted_at DESC, id DESC LIMIT 1")
+        ) {
+          const index = stored.findLastIndex((row) =>
+            row.request_id === params[0]
+          );
+          return Promise.resolve(index < 0 ? [] : [{ id: index + 1 }]);
+        }
+        // loadRequest: retrieve id + response for a specific request_id.
+        if (
+          text.includes("SELECT id, response FROM public.request_log") &&
+          text.includes("ORDER BY submitted_at DESC, id DESC LIMIT 1")
+        ) {
+          const index = stored.findLastIndex((row) =>
+            row.request_id === params[0]
+          );
+          return Promise.resolve(
+            index < 0
+              ? []
+              : [{ id: index + 1, response: stored[index].response }],
           );
         }
         if (text.includes("UPDATE public.request_log")) {
@@ -76,6 +110,15 @@ function fakeSql(results: Record<string, unknown>[][] = []) {
         if (text.includes("SELECT response FROM public.request_log")) {
           const row = stored.findLast((row) => row.request_id === params[0]);
           return Promise.resolve(row ? [{ response: row.response }] : []);
+        }
+        // Timeline events for loadRequest.
+        if (text.includes("FROM public.request_event") && text.includes("WHERE request_log_id")) {
+          const logId = String(params[0]);
+          return Promise.resolve(
+            events
+              .filter((e) => String(e.request_log_id) === logId)
+              .map((e) => ({ status: e.status, at: e.at })),
+          );
         }
         if (
           text.includes("FROM public.staff_action") &&
@@ -148,11 +191,13 @@ function fakeSql(results: Record<string, unknown>[][] = []) {
       async begin<T>(fn: (tx: RequestDatabase) => Promise<T>): Promise<T> {
         const snapshot = structuredClone(stored);
         const actionCount = actions.length;
+        const eventCount = events.length;
         try {
           return await fn(sql);
         } catch (error) {
           stored.splice(0, stored.length, ...snapshot);
           actions.splice(actionCount);
+          events.splice(eventCount);
           throw error;
         }
       },
@@ -165,6 +210,7 @@ function fakeSql(results: Record<string, unknown>[][] = []) {
   return {
     stored,
     actions,
+    events,
     sql,
     calls,
     get closed() {
@@ -208,7 +254,11 @@ async function heldRequest(
   const held = await response.json();
   equal(held.status, "staff_review");
   equal(held.answer, null);
-  equal(fake.calls.length, 1);
+  // At least the INSERT must have been called.
+  assert(
+    fake.calls.some((c) => c.text.includes("INSERT INTO public.request_log")),
+    "must save held request",
+  );
   return held;
 }
 
@@ -253,8 +303,15 @@ Deno.test("review: approval executes the same protected engine and updates the s
     Tirol: { adults_with_type2_diabetes: "<10" },
   });
   equal(fake.stored.length, 1);
-  equal(fake.stored[0].response, result);
-  equal(await (await handler(new Request(base + "/R01"))).json(), result);
+  // stored response has no timeline (saved before timeline is added); compare core fields.
+  const stored = fake.stored[0].response as Record<string, unknown>;
+  equal(stored.status, result.status);
+  equal(stored.decision, result.decision);
+  equal(stored.answer, result.answer);
+  // GET ?id returns result with timeline from DB.
+  const got = await (await handler(new Request(base + "/R01"))).json();
+  equal(got.status, "decided");
+  assert(Array.isArray(got.timeline) && got.timeline.length > 0, "GET ?id has timeline");
   equal(fake.actions.length, 1);
   equal(fake.actions[0].reason, staffReview.reason);
   assert(
@@ -405,7 +462,10 @@ Deno.test("review: failed audit rolls back the response update", async () => {
     code: "Error",
     stage: "review_request",
   });
-  equal(fake.stored[0].response, held);
+  // stored response should be unchanged (without timeline since we compare core fields).
+  const storedResp = fake.stored[0].response as Record<string, unknown>;
+  equal(storedResp.status, held.status);
+  equal(storedResp.decision, held.decision);
   equal(fake.actions.length, 0);
 });
 
@@ -507,19 +567,24 @@ Deno.test("requests: POST runs real statistical pipeline, saves full JSON, only 
     "decision envelope required",
   );
   equal(result.needs_review, false);
-  const insert = fake.calls.at(-1)!;
-  assert(
-    insert.text.includes("INSERT INTO public.request_log"),
-    "must save result",
-  );
-  equal(insert.params, [
-    "R01",
-    statistical,
-    result,
-  ]);
+  // Find the request_log INSERT (not necessarily the last call anymore).
+  const insert = fake.calls.find((c) => c.text.includes("INSERT INTO public.request_log"))!;
+  assert(insert !== undefined, "must save result");
+  // The saved params are the original response (before timeline is appended).
+  equal(insert.params[0], "R01");
+  equal(insert.params[1], statistical);
+  // result.timeline is added after save; compare core fields only.
+  const savedResp = insert.params[2] as Record<string, unknown>;
+  equal(savedResp.decision, result.decision);
+  equal(savedResp.answer, result.answer);
   assert(
     !JSON.stringify(result).includes("secret"),
     "no patient fields in response",
+  );
+  // Timeline is present in POST response.
+  assert(
+    Array.isArray(result.timeline) && result.timeline.length > 0,
+    "POST response includes timeline",
   );
   equal(fake.closed, 1);
 });
@@ -535,10 +600,16 @@ Deno.test("requests: rejected requests are saved without querying patient data",
   const result = await response.json();
   equal(result.decision, "REJECT");
   equal(result.answer, null);
-  equal(fake.calls.length, 1);
+  // At least the INSERT must be present; no patient data queries.
   assert(
-    fake.calls[0].text.includes("INSERT INTO public.request_log"),
+    fake.calls.some((c) => c.text.includes("INSERT INTO public.request_log")),
     "only history insert allowed",
+  );
+  assert(
+    fake.calls.every((call) =>
+      !/eligible_patients|CREATE SCHEMA/.test(call.text)
+    ),
+    "no patient data queries",
   );
 });
 
@@ -552,8 +623,12 @@ Deno.test("requests: parse failures are saved as review results", async () => {
   equal(result.needs_review, true);
   equal(result.answer, null);
   assert(result.parse_errors.length > 0, "parse errors returned");
-  equal(fake.calls.length, 1);
-  equal(fake.calls[0].params[2], result);
+  const insert = fake.calls.find((c) => c.text.includes("INSERT INTO public.request_log"))!;
+  assert(insert !== undefined, "must save result");
+  // The saved params[2] is the response without timeline.
+  const savedResp = insert.params[2] as Record<string, unknown>;
+  equal(savedResp.decision, result.decision);
+  equal(savedResp.needs_review, result.needs_review);
 });
 
 Deno.test("requests: lookup supports query and decoded path ids with deterministic latest ordering", async () => {
@@ -573,10 +648,12 @@ Deno.test("requests: lookup supports query and decoded path ids with determinist
       base + "/R02?id=R01",
     ]
   ) {
-    const fake = fakeSql([[{ response: saved }]]);
+    const fake = fakeSql([[{ id: 1, response: saved }]]);
     const response = await createHandler(() => fake.sql)(new Request(url));
     equal(response.status, 200);
-    equal(await response.json(), saved);
+    const got = await response.json();
+    equal(got.decision, saved.decision);
+    equal(got.request_id, saved.request_id);
     equal(fake.calls[0].params, ["R01"]);
     assert(
       fake.calls[0].text.includes(
@@ -852,7 +929,12 @@ Deno.test("requests: SPE result saves only cohort size and schema, never record 
   equal(result.decision, "APPROVE_SPE");
   equal(result.answer, { cohort_size: 42 });
   equal(result.spe_schema, "spe_r05");
-  equal(fake.calls.at(-1)!.params[2], result);
+  const insert = fake.calls.find((c) => c.text.includes("INSERT INTO public.request_log"))!;
+  assert(insert !== undefined, "must save result");
+  // The saved params[2] excludes timeline (added after save).
+  const savedResp = insert.params[2] as Record<string, unknown>;
+  equal(savedResp.decision, result.decision);
+  equal(savedResp.answer, result.answer);
   assert(
     !JSON.stringify(result).includes("secret"),
     "no patient records returned",
@@ -866,8 +948,11 @@ Deno.test("requests: resubmissions append history instead of updating or upserti
   for (const purpose of ["insurance premiums", "advertising"]) {
     equal((await handler(post({ ...statistical, purpose }))).status, 200);
   }
-  equal(fake.calls.length, 2);
-  for (const call of fake.calls) {
+  const inserts = fake.calls.filter((c) =>
+    c.text.includes("INSERT INTO public.request_log")
+  );
+  equal(inserts.length, 2);
+  for (const call of inserts) {
     assert(
       call.text.includes("INSERT INTO public.request_log"),
       "append submission",
@@ -891,18 +976,24 @@ Deno.test("request log: postgres.js JSONB save/load round trip stores objects", 
     needs_review: false,
     answer: { Wien: { cohort: 25 }, Tirol: { cohort: "<10" } },
   };
-  await saveRequest(fake.sql, request, response);
+  const { logId } = await saveRequest(fake.sql, request, response);
+  assert(logId !== undefined, "saveRequest returns logId");
   equal(fake.stored.length, 1);
   equal(typeof fake.stored[0].request, "object");
   equal(typeof fake.stored[0].response, "object");
   equal(fake.stored[0].request, request);
   equal(fake.stored[0].response, response);
-  equal(await loadRequest(fake.sql, "R01"), response);
+  const loaded = await loadRequest(fake.sql, "R01");
+  assert(loaded !== null, "must load response");
+  equal(loaded.decision, response.decision);
+  equal(loaded.answer, response.answer);
   const result = await createHandler(() => fake.sql)(
     new Request(base + "?id=R01"),
   );
   equal(result.status, 200);
-  equal(await result.json(), response);
+  const got = await result.json();
+  equal(got.decision, response.decision);
+  equal(got.answer, response.answer);
   const overview =
     await (await createHandler(() => fake.sql)(new Request(base))).json();
   equal(overview.requests[0].decision, response.decision);
@@ -927,12 +1018,17 @@ Deno.test("request log: existing JSON string rows load as objects and populate o
     request: JSON.stringify(statistical),
     response: JSON.stringify(response),
   });
-  equal(await loadRequest(fake.sql, "R05"), response);
+  const loaded = await loadRequest(fake.sql, "R05");
+  assert(loaded !== null, "must load response");
+  equal(loaded.decision, response.decision);
+  equal(loaded.answer, response.answer);
   const handler = createHandler(() => fake.sql);
   for (const url of [base + "?id=R05", base + "/R05"]) {
     const result = await handler(new Request(url));
     equal(result.status, 200);
-    equal(await result.json(), response);
+    const got = await result.json();
+    equal(got.decision, response.decision);
+    equal(got.answer, response.answer);
   }
   const overview = await (await handler(new Request(base))).json();
   equal(overview.requests, [{
@@ -961,5 +1057,148 @@ Deno.test("request log: JSONB fake distinguishes an encoded string from an objec
   );
   equal(typeof fake.stored[0].request, "string");
   equal(typeof fake.stored[0].response, "string");
-  equal(await loadRequest(fake.sql, "R01"), value);
+  const loaded = await loadRequest(fake.sql, "R01");
+  assert(loaded !== null, "must load response");
+  equal(loaded.decision, value.decision);
+});
+
+// ---------------------------------------------------------------------------
+// Lifecycle timeline tests
+// ---------------------------------------------------------------------------
+
+Deno.test("lifecycle: statistical submission records submitted+assessed+decided+fulfilled", async () => {
+  const fake = fakeSql([
+    [{ value: "Wien" }, { value: "Tirol" }],
+    [{ g0: "Wien", n: "25" }, { g0: "Tirol", n: "4" }],
+  ]);
+  const response = await createHandler(() => fake.sql)(post(statistical));
+  equal(response.status, 200);
+  const result = await response.json();
+  equal(result.decision, "APPROVE_STATISTICAL");
+  assert(Array.isArray(result.timeline), "timeline present in POST response");
+  const statuses = result.timeline.map((e: { status: string }) => e.status);
+  equal(statuses, ["submitted", "assessed", "decided", "fulfilled"]);
+  // Events stored in DB.
+  equal(
+    fake.events.filter((e) => e.request_id === "R01").map((e) => e.status),
+    ["submitted", "assessed", "decided", "fulfilled"],
+  );
+  // GET ?id returns timeline with DB timestamps.
+  const got = await (await createHandler(() => fake.sql)(new Request(base + "?id=R01"))).json();
+  assert(Array.isArray(got.timeline) && got.timeline.length === 4, "GET has 4 timeline events");
+  equal(got.timeline[0].status, "submitted");
+  equal(got.timeline[3].status, "fulfilled");
+  assert(typeof got.timeline[0].at === "string", "timeline events have timestamps");
+});
+
+Deno.test("lifecycle: SPE submission records submitted+assessed+decided+fulfilled", async () => {
+  const fake = fakeSql();
+  fake.sql.unsafe = (text, params = []) => {
+    fake.calls.push({ text, params });
+    if (text.includes("INSERT INTO public.request_event")) {
+      fake.events.push({
+        request_log_id: params[0] as unknown,
+        request_id: params[1] as unknown as string,
+        status: String(params[2]),
+        at: "2026-10-30T12:00:00Z",
+      });
+      return Promise.resolve([]);
+    }
+    if (text.includes("SELECT COUNT(*)::text AS n")) {
+      return Promise.resolve([{ n: "42" }]);
+    }
+    if (text.includes("SELECT id FROM public.request_log")) {
+      const index = fake.stored.findLastIndex((row) => row.request_id === params[0]);
+      return Promise.resolve(index < 0 ? [] : [{ id: index + 1 }]);
+    }
+    if (text.includes("SELECT id, response FROM public.request_log")) {
+      const index = fake.stored.findLastIndex((row) => row.request_id === params[0]);
+      return Promise.resolve(
+        index < 0 ? [] : [{ id: index + 1, response: fake.stored[index].response }],
+      );
+    }
+    if (text.includes("FROM public.request_event")) {
+      const logId = String(params[0]);
+      return Promise.resolve(
+        fake.events.filter((e) => String(e.request_log_id) === logId).map((e) => ({
+          status: e.status,
+          at: e.at,
+        })),
+      );
+    }
+    if (text.includes("INSERT INTO public.request_log")) {
+      fake.stored.push({
+        request_id: params[0] as string,
+        request: JSON.parse(JSON.stringify(params[1])),
+        response: JSON.parse(JSON.stringify(params[2])),
+      });
+    }
+    return Promise.resolve([]);
+  };
+  const speRequest = REQUEST_FIXTURES.find((r) => r.id === "R05")!;
+  const response = await createHandler(() => fake.sql)(post(speRequest));
+  equal(response.status, 200);
+  const result = await response.json();
+  equal(result.decision, "APPROVE_SPE");
+  const statuses = result.timeline.map((e: { status: string }) => e.status);
+  equal(statuses, ["submitted", "assessed", "decided", "fulfilled"]);
+  equal(
+    fake.events.map((e) => e.status),
+    ["submitted", "assessed", "decided", "fulfilled"],
+  );
+});
+
+Deno.test("lifecycle: rejected submission records submitted+assessed+decided (no fulfilled)", async () => {
+  const fake = fakeSql();
+  const response = await createHandler(() => fake.sql)(post({
+    ...statistical,
+    id: "R02",
+    purpose: "Set insurance premiums",
+  }));
+  equal(response.status, 200);
+  const result = await response.json();
+  equal(result.decision, "REJECT");
+  const statuses = result.timeline.map((e: { status: string }) => e.status);
+  equal(statuses, ["submitted", "assessed", "decided"]);
+  equal(
+    fake.events.filter((e) => e.request_id === "R02").map((e) => e.status),
+    ["submitted", "assessed", "decided"],
+  );
+});
+
+Deno.test("lifecycle: held submission records submitted+assessed+staff_review (no decided/fulfilled)", async () => {
+  const fake = fakeSql();
+  const held = await heldRequest(fake);
+  const statuses = held.timeline.map((e: { status: string }) => e.status);
+  equal(statuses, ["submitted", "assessed", "staff_review"]);
+  equal(
+    fake.events.filter((e) => e.request_id === "R01").map((e) => e.status),
+    ["submitted", "assessed", "staff_review"],
+  );
+});
+
+Deno.test("lifecycle: held→approved records decided+fulfilled in review response and GET", async () => {
+  const fake = fakeSql();
+  await heldRequest(fake);
+  patientResults(fake);
+  const handler = createHandler(() => fake.sql);
+  const response = await handler(post(staffReview, base + "/review"));
+  equal(response.status, 200);
+  const result = await response.json();
+  equal(result.status, "decided");
+  // Review response includes decided+fulfilled timeline.
+  const statuses = result.timeline.map((e: { status: string }) => e.status);
+  equal(statuses, ["decided", "fulfilled"]);
+  // Events accumulated: submitted+assessed+staff_review from initial hold +
+  // decided+fulfilled from review.
+  const allStatuses = fake.events
+    .filter((e) => e.request_id === "R01")
+    .map((e) => e.status);
+  equal(allStatuses, ["submitted", "assessed", "staff_review", "decided", "fulfilled"]);
+  // GET ?id shows full timeline.
+  const got = await (await handler(new Request(base + "/R01"))).json();
+  assert(Array.isArray(got.timeline) && got.timeline.length === 5, "GET has 5 timeline events");
+  equal(got.timeline.map((e: { status: string }) => e.status), [
+    "submitted", "assessed", "staff_review", "decided", "fulfilled",
+  ]);
 });

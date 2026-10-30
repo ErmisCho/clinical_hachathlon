@@ -61,6 +61,8 @@ export interface PipelineResponse {
   population?: {
     eligible_patients: number;
   };
+  /** Ordered lifecycle events attached by loadRequest; not present in freshly computed responses. */
+  timeline?: { status: string; at: string }[];
 }
 
 /** Query the count of eligible patients (opted-out rows are excluded by the view). */
