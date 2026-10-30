@@ -78,6 +78,49 @@ variables or service secret stores, out of Git and recorded terminal output.
 
 ## Evaluation
 
+### Curated demo submissions
+
+`scripts/seed-demo.ts` has two independently re-runnable steps. Reserve its fixed
+reference list `AT20260412`–`AT20260424` for these applications (the API does not
+accept hyphens). Run one maintenance process at
+a time, with grading/submission jobs stopped. `clean` needs `DATABASE_URL` and
+removes only grading IDs matching
+`^(Q34|T49|P43|H47|UI47|L45|M45|N45)[A-Za-z0-9]*_`, legacy IDs starting `D_`,
+and the exact fixed reference list. Other `AT` reference numbers are preserved.
+It deletes their staff actions, lifecycle events, download logs and submissions,
+and drops their SPE schemas in one transaction, including orphan audit rows and
+SPEs. It prints IDs, row counts and schemas. Other IDs, including R01–R10, remain.
+`--dry-run` reports the same cleanup scope without writes.
+
+`seed` needs `BASE_URL` pointing to the functions root. It checks each ID via
+`GET /requests/<id>` and submits missing IDs through `POST /requests`, so existing
+R01–R10 and partial runs are preserved. New submissions have invented Austrian
+applicants and `submitted` dates across the past three weeks; database audit
+timestamps still reflect the actual API calls. It adds eight varied decisions,
+three purpose holds left in the staff queue, and two purpose holds resolved through
+`POST /requests/review` with written reasons. If staff review returns 401/403,
+it continues and reports the missing actions; set `STAFF_TOKEN` and rerun `seed`
+to finish them. The token is sent as Bearer Authorization only on review calls.
+The summary table shows the outcomes; unexpected curated outcomes fail the run.
+`seed --dry-run` previews the portfolio offline without HTTP calls. Optional
+`EHDS_TRACK_DIR` has the same meaning as for evaluation.
+
+With `DATABASE_URL` set as above, PowerShell:
+
+```powershell
+$env:BASE_URL = 'https://YOUR_PROJECT.supabase.co/functions/v1'
+# Optional, when staff authentication is enabled:
+# $env:STAFF_TOKEN = 'YOUR_STAFF_TOKEN'
+deno run --allow-read --allow-env --allow-net scripts/seed-demo.ts clean --dry-run
+deno run --allow-read --allow-env --allow-net scripts/seed-demo.ts clean
+deno run --allow-read --allow-env --allow-net scripts/seed-demo.ts seed
+```
+
+With no step argument (or `all`), cleanup runs before seeding. Review the public
+register and staff queue after running. Then use the evaluator below to verify
+10/10 decisions, 6/6 numbers and zero leaks; live validation requires an explicit
+run against your deployment and is not part of the offline tests.
+
 The evaluator reads ten requests and `expected.json` from the sibling track
 checkout. Optional `EHDS_TRACK_DIR` overrides the track root (relative paths use
 the working directory). HTTP evaluation submits requests and persists them;
