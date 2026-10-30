@@ -185,10 +185,19 @@ HTTP 400. Both `/requests` and `/requests/` are accepted.
 
 ## `GET /requests`
 
-Without an id, returns all submission history and the blocked-download log, each
-newest first (timestamp descending, then database row id descending). There is
-no pagination; `limit` and `offset` have no effect. Repeated request ids appear
-once per saved submission.
+Without an id, returns a bounded submission overview and the newest 100 entries
+of the blocked-download log. The overview reserves space for submissions still
+awaiting staff review (`needs_review: true`), then fills the remaining places
+with the newest decided submissions up to 100 total. Both lists are newest first
+(timestamp descending, then database row id descending). There is no pagination;
+`limit` and `offset` have no effect. Repeated request ids appear once per selected
+saved submission. History selection happens before overview JSON projection and
+staff-action lookup; legacy JSON-string responses are decoded as needed to
+identify held submissions.
+
+If more than 100 submissions await review, all held submissions are returned
+and decided submissions are omitted; preserving the staff queue takes precedence
+over the 100-row target in that case.
 
 ```json
 {
@@ -244,8 +253,12 @@ Legacy saved responses without status are classified using `needs_review`.
 | 500    | Database connection, pipeline, or history read/write failure                                                         |
 
 Errors use `{ "error": "message" }`. Internal failures always return
-`{ "error": "internal server error" }`; exception text and stack traces are
-never returned.
+`{ "error": "internal server error", "code": "42501", "stage": "list_requests" }`.
+`code` is the Postgres SQLSTATE when present, otherwise the error name. `stage`
+identifies the failing step: `connect`, `list_requests`, `list_downloads`,
+`load_request`, `answer_request`, `save_request`, `review_request`, or `serialize`.
+Only the code and stage are logged for these failures; exception text, SQL,
+request bodies, row data, and stack traces are never returned.
 
 ## `GET /spe-download?id=R05` or `POST /spe-download`
 

@@ -79,6 +79,17 @@ function fakeSql(results: Record<string, unknown>[][] = []) {
         }
         if (text.includes("AS history")) {
           assert(
+            text.includes("WITH held AS MATERIALIZED") &&
+              text.includes("END = 'true'::jsonb") &&
+              text.includes("WHERE id NOT IN (SELECT id FROM held)") &&
+              text.includes(
+                "ORDER BY submitted_at DESC, id DESC\n       LIMIT",
+              ) &&
+              text.includes("100 - (SELECT COUNT(*) FROM held)") &&
+              text.includes("UNION ALL") && text.includes("FROM selected"),
+            "select held rows and bounded recent decisions before projection",
+          );
+          assert(
             text.includes("jsonb_typeof(response) = 'string'"),
             "normalize legacy rows before projection",
           );
@@ -86,24 +97,35 @@ function fakeSql(results: Record<string, unknown>[][] = []) {
             text.includes("(response #>> '{}')::jsonb"),
             "decode legacy JSON string",
           );
+          const newest = stored.toReversed();
+          const isHeld = (row: typeof stored[number]) =>
+            (typeof row.response === "string"
+              ? JSON.parse(row.response)
+              : row.response).needs_review === true;
+          const held = newest.filter(isHeld);
+          const recent = newest.filter((row) => !isHeld(row)).slice(
+            0,
+            Math.max(0, 100 - held.length),
+          );
           return Promise.resolve(
-            stored.toReversed().map((row) => {
-              const result = typeof row.response === "string"
-                ? JSON.parse(row.response)
-                : row.response;
-              const response = result as Record<string, unknown>;
-              return {
-                request_id: row.request_id,
-                submitted_at: "2026-10-29T12:00:00Z",
-                decision: response.decision,
-                articles: response.articles,
-                needs_review: response.needs_review,
-                spe_schema: response.spe_schema ?? null,
-                last_staff_action: actions.findLast((action) =>
-                  action.request_log_id === stored.indexOf(row) + 1
-                ) ?? null,
-              };
-            }),
+            newest.filter((row) => held.includes(row) || recent.includes(row))
+              .map((row) => {
+                const result = typeof row.response === "string"
+                  ? JSON.parse(row.response)
+                  : row.response;
+                const response = result as Record<string, unknown>;
+                return {
+                  request_id: row.request_id,
+                  submitted_at: "2026-10-29T12:00:00Z",
+                  decision: response.decision,
+                  articles: response.articles,
+                  needs_review: response.needs_review,
+                  spe_schema: response.spe_schema ?? null,
+                  last_staff_action: actions.findLast((action) =>
+                    action.request_log_id === stored.indexOf(row) + 1
+                  ) ?? null,
+                };
+              }),
           );
         }
         return Promise.resolve([]);
@@ -363,7 +385,11 @@ Deno.test("review: failed audit rolls back the response update", async () => {
     decision: "REJECT",
   }, base + "/review"));
   equal(response.status, 500);
-  equal(await response.json(), { error: "internal server error" });
+  equal(await response.json(), {
+    error: "internal server error",
+    code: "Error",
+    stage: "review_request",
+  });
   equal(fake.stored[0].response, held);
   equal(fake.actions.length, 0);
 });
@@ -604,10 +630,73 @@ Deno.test("requests: overview selects and projects only safe fields for every hi
     "newest requests first",
   );
   assert(
-    fake.calls[1].text.includes("ORDER BY attempted_at DESC, id DESC"),
-    "newest downloads first",
+    fake.calls[1].text.includes(
+      "ORDER BY attempted_at DESC, id DESC LIMIT 100",
+    ),
+    "newest 100 downloads first",
   );
   equal(fake.closed, 1);
+});
+
+Deno.test("requests: overview limits decided history to the newest 100 rows", async () => {
+  const fake = fakeSql();
+  for (let index = 0; index < 130; index++) {
+    fake.stored.push({
+      request_id: `R${index}`,
+      request: {},
+      response: { decision: "REJECT", needs_review: false },
+    });
+  }
+  const response = await createHandler(() => fake.sql)(new Request(base));
+  equal(response.status, 200);
+  const result = await response.json();
+  equal(
+    result.requests.map((row: { request_id: string }) => row.request_id),
+    Array.from({ length: 100 }, (_, index) => `R${129 - index}`),
+  );
+});
+
+Deno.test("requests: overview retains old held rows, including legacy JSON strings", async () => {
+  const fake = fakeSql();
+  for (let index = 0; index < 130; index++) {
+    const response = { decision: "REJECT", needs_review: index < 2 };
+    fake.stored.push({
+      request_id: `R${index}`,
+      request: {},
+      response: index === 0 ? JSON.stringify(response) : response,
+    });
+  }
+  const response = await createHandler(() => fake.sql)(new Request(base));
+  equal(response.status, 200);
+  const result = await response.json();
+  equal(result.requests.map((row: { request_id: string }) => row.request_id), [
+    ...Array.from({ length: 98 }, (_, index) => `R${129 - index}`),
+    "R1",
+    "R0",
+  ]);
+  equal(
+    result.requests.filter((row: { needs_review: boolean }) => row.needs_review)
+      .map((row: { request_id: string }) => row.request_id),
+    ["R1", "R0"],
+  );
+});
+
+Deno.test("requests: overview never drops held rows when the queue exceeds 100", async () => {
+  const fake = fakeSql();
+  for (let index = 0; index < 111; index++) {
+    fake.stored.push({
+      request_id: `R${index}`,
+      request: {},
+      response: { needs_review: index < 110 },
+    });
+  }
+  const response = await createHandler(() => fake.sql)(new Request(base));
+  equal(response.status, 200);
+  const result = await response.json();
+  equal(
+    result.requests.map((row: { request_id: string }) => row.request_id),
+    Array.from({ length: 110 }, (_, index) => `R${109 - index}`),
+  );
 });
 
 Deno.test("requests: empty overview includes both lists", async () => {
@@ -648,11 +737,38 @@ Deno.test("requests: connection and query failures are sanitized JSON 500s", asy
     ) {
       const response = await createHandler(connect)(request);
       equal(response.status, 500);
-      equal(await response.json(), { error: "internal server error" });
+      equal(await response.json(), {
+        error: "internal server error",
+        code: "Error",
+        stage: connect === factories[0]
+          ? "connect"
+          : request.method === "POST"
+          ? "answer_request"
+          : new URL(request.url).searchParams.has("id")
+          ? "load_request"
+          : "list_requests",
+      });
       equal(response.headers.get("Access-Control-Allow-Origin"), "*");
     }
   }
   equal(fake.closed, 3);
+});
+
+Deno.test("requests: overview query failure returns only SQLSTATE and stage", async () => {
+  const fake = fakeSql();
+  fake.sql.unsafe = () => {
+    throw Object.assign(new Error("private SQL and row data"), {
+      code: "42501",
+    });
+  };
+  const response = await createHandler(() => fake.sql)(new Request(base));
+  equal(response.status, 500);
+  equal(await response.json(), {
+    error: "internal server error",
+    code: "42501",
+    stage: "list_requests",
+  });
+  equal(fake.closed, 1);
 });
 
 Deno.test("requests: failed history insertion never reports successful submission", async () => {

@@ -43,9 +43,28 @@ export async function loadRequest(
 }
 
 export function listRequests(sql: RequestLogSql) {
-  // Normalize legacy JSON strings in SQL so answers never enter the overview.
+  // Reserve space for held submissions before filling with recent decisions.
+  // Only legacy strings need decoding to inspect needs_review; normalize and
+  // project the full overview fields after selecting the history window.
   return sql.unsafe(
-    `SELECT request_id, submitted_at,
+    `WITH held AS MATERIALIZED (
+       SELECT id, request_id, submitted_at, response
+       FROM public.request_log
+       WHERE CASE WHEN jsonb_typeof(response) = 'string'
+                  THEN (response #>> '{}')::jsonb->'needs_review'
+                  ELSE response->'needs_review' END = 'true'::jsonb
+     ), recent AS MATERIALIZED (
+       SELECT id, request_id, submitted_at, response
+       FROM public.request_log
+       WHERE id NOT IN (SELECT id FROM held)
+       ORDER BY submitted_at DESC, id DESC
+       LIMIT GREATEST(0, 100 - (SELECT COUNT(*) FROM held))
+     ), selected AS MATERIALIZED (
+       SELECT id, request_id, submitted_at, response FROM held
+       UNION ALL
+       SELECT id, request_id, submitted_at, response FROM recent
+     )
+     SELECT request_id, submitted_at,
             result->>'decision' AS decision,
             result->'articles' AS articles,
             result->'needs_review' AS needs_review,
@@ -63,7 +82,7 @@ export function listRequests(sql: RequestLogSql) {
               CASE WHEN jsonb_typeof(response) = 'string'
                    THEN (response #>> '{}')::jsonb
                    ELSE response END AS result
-       FROM public.request_log
+       FROM selected
      ) AS history ORDER BY submitted_at DESC, id DESC`,
     [],
   );

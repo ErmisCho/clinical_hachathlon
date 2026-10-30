@@ -83,31 +83,42 @@ export function createHandler(connect: () => RequestDatabase) {
     }
 
     let sql: RequestDatabase | undefined;
+    let stage = "connect";
     try {
       sql = connect();
       if (isReview && validReview(body)) {
+        stage = "review_request";
         const response = await sql.begin((tx) =>
           reviewRequest(tx as RequestDatabase, body)
         );
+        stage = "serialize";
         return json(response);
       }
       if (body) {
+        stage = "answer_request";
         const response = await answerRequest(body, sql);
+        stage = "save_request";
         await saveRequest(sql, body, response);
+        stage = "serialize";
         return json(response);
       }
       if (id !== null) {
+        stage = "load_request";
         const response = await loadRequest(sql, id);
+        stage = "serialize";
         return response
           ? json(response)
           : json({ error: "request not found" }, 404);
       }
+      stage = "list_requests";
       const requests = await listRequests(sql);
+      stage = "list_downloads";
       const downloads = await sql.unsafe(
         `SELECT request_id, attempted_at FROM public.spe_download_log
-         ORDER BY attempted_at DESC, id DESC`,
+         ORDER BY attempted_at DESC, id DESC LIMIT 100`,
         [],
       );
+      stage = "serialize";
       return json({
         requests: requests.map((row) => ({
           request_id: row.request_id,
@@ -128,7 +139,18 @@ export function createHandler(connect: () => RequestDatabase) {
       if (error instanceof ReviewError) {
         return json({ error: error.message }, error.status);
       }
-      return json({ error: "internal server error" }, 500);
+      const diagnostic = error as {
+        code?: unknown;
+        name?: unknown;
+      } | null;
+      const code = typeof diagnostic?.code === "string" &&
+          /^[0-9A-Z]{5}$/.test(diagnostic.code)
+        ? diagnostic.code
+        : typeof diagnostic?.name === "string"
+        ? diagnostic.name
+        : "Error";
+      console.error("requests: internal server error", { code, stage });
+      return json({ error: "internal server error", code, stage }, 500);
     } finally {
       try {
         await sql?.end();
