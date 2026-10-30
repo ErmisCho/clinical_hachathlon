@@ -1,4 +1,9 @@
 import {
+  type HdabConfig,
+  HDABS,
+  publicConfig,
+} from "../_shared/hdab/config.ts";
+import {
   readRequestJson,
   RequestInputError,
   validateRequest,
@@ -24,7 +29,7 @@ export type RequestDatabase = SqlClient & RequestLogSql & {
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
+    "authorization, x-client-info, apikey, content-type, x-hdab",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
 };
 
@@ -47,6 +52,13 @@ export function createHandler(connect: () => RequestDatabase) {
     const url = new URL(req.url);
     const path = url.pathname.match(/\/requests(?:\/([^/]+))?\/?$/);
     if (!path) return json({ error: "not found" }, 404);
+    const code = req.headers.get("x-hdab") ?? url.searchParams.get("hdab") ??
+      "at";
+    const hdab = HDABS.find((config) => config.code === code);
+    if (!hdab) return json({ error: "unknown HDAB" }, 400);
+    if (req.method === "GET" && path[1] === "hdab") {
+      return json({ configs: HDABS.map(publicConfig) });
+    }
     const isPreview = req.method === "POST" && path[1] === "preview";
     const isReview = req.method === "POST" && path[1] === "review";
     if (req.method === "POST" && path[1] && !isReview && !isPreview) {
@@ -92,7 +104,7 @@ export function createHandler(connect: () => RequestDatabase) {
 
     // Preview: pure computation, no SQL ever.
     if (isPreview && body) {
-      return handlePreview(body);
+      return handlePreview(body, hdab);
     }
 
     let sql: RequestDatabase | undefined;
@@ -102,17 +114,22 @@ export function createHandler(connect: () => RequestDatabase) {
       if (isReview && validReview(body)) {
         stage = "review_request";
         const response = await sql.begin((tx) =>
-          reviewRequest(tx as RequestDatabase, body)
+          reviewRequest(tx as RequestDatabase, body, hdab)
         );
         stage = "serialize";
         return json(response);
       }
       if (body) {
         stage = "answer_request";
-        const response = await answerRequest(body, sql);
+        const response = await answerRequest(body, sql, undefined, hdab);
         stage = "save_request";
         const { logId } = await saveRequest(sql, body, response);
-        const timeline = await recordEvents(sql, logId, response.request_id, response);
+        const timeline = await recordEvents(
+          sql,
+          logId,
+          response.request_id,
+          response,
+        );
         stage = "serialize";
         const lifecycle_status = timeline[timeline.length - 1]?.status ?? null;
         return json({ ...response, timeline, lifecycle_status });
@@ -238,6 +255,8 @@ function validatePreview(value: unknown): string[] {
 }
 
 export interface PreviewResponse {
+  rule_id: string;
+  rules_version: string;
   decision: "REJECT" | "APPROVE_STATISTICAL" | "APPROVE_SPE";
   articles: string[];
   reason: string;
@@ -250,7 +269,10 @@ export interface PreviewResponse {
   unreadable: { index: number; definition: string; reason: string }[];
 }
 
-function handlePreview(body: Record<string, unknown>): Response {
+function handlePreview(
+  body: Record<string, unknown>,
+  hdab: HdabConfig,
+): Response {
   // Fill placeholders so parseRequest's id check passes.
   const req: Record<string, unknown> = {
     ...body,
@@ -260,7 +282,11 @@ function handlePreview(body: Record<string, unknown>): Response {
       : new Date().toISOString(),
   };
 
-  const decisionResult = decide(req as unknown as Parameters<typeof decide>[0]);
+  const decisionResult = decide(
+    req as unknown as Parameters<typeof decide>[0],
+    hdab.extra_prohibited,
+    hdab.code,
+  );
   const { decision, articles, reason, needs_review } = decisionResult;
 
   // Parse to find unreadable definitions (always run, even for REJECT).
@@ -308,6 +334,8 @@ function handlePreview(body: Record<string, unknown>): Response {
     : "decided";
 
   const response: PreviewResponse = {
+    rule_id: decisionResult.rule_id,
+    rules_version: decisionResult.rules_version,
     decision,
     articles,
     reason,

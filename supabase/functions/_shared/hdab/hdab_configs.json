@@ -1,0 +1,43 @@
+{
+  "default": "at",
+  "hdabs": [
+    {
+      "code": "at",
+      "country": "Austria",
+      "name": "Zugangsstelle für Gesundheitsdaten Österreich (Demo)",
+      "display_language": "en",
+      "languages": ["de", "en"],
+      "contact": "demo@example.org",
+      "branding": { "primary": "#20364d", "accent": "#27665f" },
+      "extra_prohibited": []
+    },
+    {
+      "code": "de",
+      "country": "Germany",
+      "name": "Zugangsstelle für Gesundheitsdaten Deutschland (Demo)",
+      "display_language": "de",
+      "languages": ["de", "en"],
+      "contact": "demo-de@example.org",
+      "branding": { "primary": "#283e58", "accent": "#58418a" },
+      "extra_prohibited": [
+        {
+          "id": "N-DE-01",
+          "label": "Genetic discrimination",
+          "article_ref": "54",
+          "phrases": [
+            "genetic discrimination",
+            "Gentest für Arbeitgeber"
+          ],
+          "examples": [
+            "We propose genetic discrimination.",
+            "Wir planen einen Gentest für Arbeitgeber."
+          ],
+          "counter_examples": [
+            "We will not use genetic discrimination.",
+            "Research without any genetic discrimination."
+          ]
+        }
+      ]
+    }
+  ]
+}

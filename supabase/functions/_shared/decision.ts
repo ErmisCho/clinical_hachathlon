@@ -57,6 +57,15 @@ export interface DecisionResult {
 
 type RuleKind = "prohibited" | "allowed" | "spe_justification";
 
+export interface ExtraProhibitedRule {
+  id: string;
+  article_ref: string;
+  label: string;
+  phrases: string[];
+  examples: string[];
+  counter_examples: string[];
+}
+
 interface RawRule {
   id: string;
   kind: RuleKind;
@@ -79,15 +88,16 @@ interface CompiledRule {
 
 const RULES_VERSION: string = (RULES_DATA as { version: string }).version;
 
-const ALL_RULES: CompiledRule[] = (RULES_DATA as { rules: RawRule[] }).rules.map((r) => ({
-  id: r.id,
-  kind: r.kind,
-  article_ref: r.article_ref,
-  label: r.label,
-  patterns: r.phrases.map((p) => new RegExp(p, "i")),
-  examples: r.examples,
-  counter_examples: r.counter_examples,
-}));
+const ALL_RULES: CompiledRule[] = (RULES_DATA as { rules: RawRule[] }).rules
+  .map((r) => ({
+    id: r.id,
+    kind: r.kind,
+    article_ref: r.article_ref,
+    label: r.label,
+    patterns: r.phrases.map((p) => new RegExp(p, "i")),
+    examples: r.examples,
+    counter_examples: r.counter_examples,
+  }));
 
 const PROHIBITED_RULES = ALL_RULES.filter((r) => r.kind === "prohibited");
 const ALLOWED_RULES = ALL_RULES.filter((r) => r.kind === "allowed");
@@ -163,7 +173,9 @@ function blankNegatedWindows(text: string): string {
 /** Returns the matched substring expanded to the nearest word boundary so
  *  stem patterns like /\badvertis/ return "advertising" not "advertis". */
 function extractMatch(text: string, pattern: RegExp): string | null {
-  const flags = pattern.flags.includes("g") ? pattern.flags : pattern.flags + "g";
+  const flags = pattern.flags.includes("g")
+    ? pattern.flags
+    : pattern.flags + "g";
   const re = new RegExp(pattern.source, flags);
   const m = re.exec(text);
   if (!m) return null;
@@ -189,7 +201,22 @@ function matchContext(text: string, pattern: RegExp, ctx = 60): string | null {
 // ---------------------------------------------------------------------------
 // Main decision function
 // ---------------------------------------------------------------------------
-export function decide(req: HealthDataRequest): DecisionResult {
+export function decide(
+  req: HealthDataRequest,
+  extraRules: readonly ExtraProhibitedRule[] = [],
+  hdabCode?: string,
+): DecisionResult {
+  const rulesVersion = hdabCode
+    ? `${RULES_VERSION}+${hdabCode}`
+    : RULES_VERSION;
+  const prohibitedRules = [
+    // National matches retain their own identity, including when a base rule also fires.
+    ...extraRules.map((r) => ({
+      ...r,
+      patterns: r.phrases.map((p) => new RegExp(p, "i")),
+    })),
+    ...PROHIBITED_RULES,
+  ];
   const text = `${req.purpose ?? ""} ${req.question ?? ""}`
     .normalize("NFKC").replace(/[\u2010-\u2015]/g, "-").replace(/\s+/g, " ");
 
@@ -201,10 +228,12 @@ export function decide(req: HealthDataRequest): DecisionResult {
   const prohibitedExact: string[] = [];
   const prohibitedCtx: string[] = [];
   let prohibitedRuleId = "";
-  for (const rule of PROHIBITED_RULES) {
+  for (const rule of prohibitedRules) {
     for (const pattern of rule.patterns) {
       // Check on the negation-blanked copy
-      const flags = pattern.flags.includes("g") ? pattern.flags : pattern.flags + "g";
+      const flags = pattern.flags.includes("g")
+        ? pattern.flags
+        : pattern.flags + "g";
       const testRe = new RegExp(pattern.source, flags);
       if (testRe.test(textForMatch)) {
         // Extract match from original text for verbatim display
@@ -226,7 +255,7 @@ export function decide(req: HealthDataRequest): DecisionResult {
       reason: buildRejectReason(prohibitedMatchedLabels),
       needs_review: false,
       rule_id: prohibitedRuleId,
-      rules_version: RULES_VERSION,
+      rules_version: rulesVersion,
       matched: dedup(prohibitedExact),
       matched_context: prohibitedCtx,
     };
@@ -269,7 +298,7 @@ export function decide(req: HealthDataRequest): DecisionResult {
         "Your purpose is an allowed use of health data (Art. 53). Anonymised statistics are sufficient to answer the question (Art. 69).",
       needs_review,
       rule_id: allowedRuleId || "A01",
-      rules_version: RULES_VERSION,
+      rules_version: rulesVersion,
       matched: allowedExact,
       matched_context: allowedCtx,
     };
@@ -299,7 +328,7 @@ export function decide(req: HealthDataRequest): DecisionResult {
         "Your purpose is an allowed use of health data (Art. 53). You have explained why anonymised statistics are not sufficient; pseudonymised patient-level data is justified (Art. 66). Access is granted inside a secure processing environment under a data permit (Art. 68, 73).",
       needs_review,
       rule_id: speRuleId,
-      rules_version: RULES_VERSION,
+      rules_version: rulesVersion,
       matched: dedup(speExact),
       matched_context: speCtx,
     };
@@ -313,7 +342,7 @@ export function decide(req: HealthDataRequest): DecisionResult {
       "Your purpose is an allowed use of health data (Art. 53). Anonymised statistics are sufficient to answer the question; pseudonymised records are not justified under Art. 66. Your request is approved as statistics (Art. 69).",
     needs_review,
     rule_id: allowedRuleId || "A01",
-    rules_version: RULES_VERSION,
+    rules_version: rulesVersion,
     matched: allowedExact,
     matched_context: allowedCtx,
   };
@@ -346,7 +375,9 @@ function buildRejectReason(labels: string[]): string {
   if (labels.some((l) => /third\s+part/i.test(l))) {
     return "Passing health data to third parties not named in the permit is prohibited (Art. 54).";
   }
-  return `Your purpose matches a prohibited use of health data (Art. 54): ${labels.join("; ")}.`;
+  return `Your purpose matches a prohibited use of health data (Art. 54): ${
+    labels.join("; ")
+  }.`;
 }
 
 // ---------------------------------------------------------------------------

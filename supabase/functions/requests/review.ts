@@ -1,3 +1,4 @@
+import type { HdabConfig } from "../_shared/hdab/config.ts";
 import {
   answerRequest,
   type PipelineResponse,
@@ -54,6 +55,7 @@ function object(value: unknown): Record<string, unknown> {
 export async function reviewRequest(
   tx: RequestLogSql & SqlClient,
   review: StaffReview,
+  hdab?: HdabConfig,
 ): Promise<PipelineResponse> {
   const rows = await tx.unsafe(
     `SELECT id, request, response FROM public.request_log WHERE request_id = $1
@@ -83,7 +85,7 @@ export async function reviewRequest(
   const response = await answerRequest(request, pipelineSql, {
     decision: review.decision,
     reason: review.reason,
-  });
+  }, hdab);
   await tx`UPDATE public.request_log SET response = ${tx.json(response)}
     WHERE id = ${row.id}`;
   await tx`INSERT INTO public.staff_action
@@ -92,7 +94,12 @@ export async function reviewRequest(
             ${review.reason}, ${review.staff_name})`;
   // Load prior events then append new ones — gives full timeline in the review response.
   const priorEvents = await loadEventsForLog(tx, row.id);
-  const newEvents = await recordReviewEvents(tx, row.id, review.request_id, response);
+  const newEvents = await recordReviewEvents(
+    tx,
+    row.id,
+    review.request_id,
+    response,
+  );
   const timeline = [...priorEvents, ...newEvents];
   const lifecycle_status = timeline[timeline.length - 1]?.status ?? null;
   return { ...response, timeline, lifecycle_status };

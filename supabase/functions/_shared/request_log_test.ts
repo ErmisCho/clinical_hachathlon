@@ -522,7 +522,7 @@ Deno.test("requests: CORS preflight and unsupported methods never connect", asyn
     );
     equal(
       response.headers.get("Access-Control-Allow-Headers"),
-      "authorization, x-client-info, apikey, content-type",
+      "authorization, x-client-info, apikey, content-type, x-hdab",
     );
     if (method === "OPTIONS") equal(await response.text(), "");
     else equal(await response.json(), { error: "method not allowed" });

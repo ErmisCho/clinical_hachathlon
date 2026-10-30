@@ -367,12 +367,26 @@ const PROHIBITED_MAPPINGS: ProhibitedMapping[] = [
   },
 ];
 
-/** Find the point and applies for a prohibited-purpose decision from request text. */
-function prohibitedPurposePoint(requestText: string): {
+/**
+ * Find the point and applies for a prohibited-purpose decision.
+ * When `ruleId` starts with "N-" it is a national rule (Art. 54(1)(e));
+ * otherwise fall back to text-pattern matching over PROHIBITED_MAPPINGS.
+ */
+function prohibitedPurposePoint(requestText: string, ruleId?: string): {
   point: string | null;
   applies: string;
   ref: string;
 } {
+  // National extra rules → Art. 54(1)(e): activities in conflict with ethical
+  // provisions laid down in national law.
+  if (ruleId && ruleId.startsWith("N-")) {
+    return {
+      point: "(e)",
+      applies:
+        "carrying out activities in conflict with ethical provisions laid down in national law.",
+      ref: "Art. 54(1)(e)",
+    };
+  }
   const norm = requestText.normalize("NFKC").replace(/[\u2010-\u2015]/g, "-").replace(/\s+/g, " ");
   for (const m of PROHIBITED_MAPPINGS) {
     for (const p of m.patterns) {
@@ -631,7 +645,7 @@ export function explain(
     .normalize("NFKC").replace(/[\u2010-\u2015]/g, "-").replace(/\s+/g, " ");
 
   const prohibitedInfo = decision === "REJECT"
-    ? prohibitedPurposePoint(requestText)
+    ? prohibitedPurposePoint(requestText, decisionResult.rule_id)
     : null;
 
   const allowedInfo = decision !== "REJECT"

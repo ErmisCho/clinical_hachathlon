@@ -15,7 +15,11 @@
  *   - population { eligible_patients } — count from eligible_patients view (opted-out already excluded)
  */
 
-import { decide, type HealthDataRequest } from "./decision.ts";
+import {
+  decide,
+  type ExtraProhibitedRule,
+  type HealthDataRequest,
+} from "./decision.ts";
 import { parseRequest } from "./parser.ts";
 import { runPlan, type SqlClient as EngineSqlClient } from "./engine.ts";
 import { createSpe, type SqlClient as SpeSqlClient } from "./spe.ts";
@@ -89,13 +93,17 @@ export async function answerRequest(
   sql: SqlClient,
   /** Server-only staff instruction; never read from the applicant's JSON. */
   review?: { decision?: PipelineResponse["decision"]; reason: string },
+  hdab?: { code: string; extra_prohibited: ExtraProhibitedRule[] },
 ): Promise<PipelineResponse> {
   const req = request as HealthDataRequest;
   const request_id = typeof req?.id === "string" ? req.id : "";
 
   // Step 1 — decide first; never touch patient data for a REJECT.
-  const decisionResult = decide(req);
-  if (review) {
+  const decisionResult = decide(req, hdab?.extra_prohibited, hdab?.code);
+  if (
+    review &&
+    !hdab?.extra_prohibited.some((rule) => rule.id === decisionResult.rule_id)
+  ) {
     decisionResult.needs_review = false;
     if (review.decision) {
       decisionResult.decision = review.decision;
