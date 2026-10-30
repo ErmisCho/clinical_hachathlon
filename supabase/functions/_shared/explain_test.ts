@@ -266,3 +266,220 @@ Deno.test("matched_context contains '…' markers; matched does not", () => {
   }
 });
 
+
+// ---------------------------------------------------------------------------
+// 10. Every article has a non-empty `applies` that is a verbatim substring of `quote`
+//     for R01–R10 (sample fixtures)
+// ---------------------------------------------------------------------------
+Deno.test("R01–R10: every article has non-empty applies that is a substring of quote", () => {
+  for (const id of Object.keys(REQUESTS)) {
+    const req = REQUESTS[id];
+    const dr = decide(req);
+    const plan = PLAN_EXAMPLES[id] as QueryPlan | undefined;
+    const exp = explain(req, dr, plan);
+    for (const art of exp.articles) {
+      assert(
+        art.applies.length > 0,
+        `${id}: article ${art.number} must have a non-empty applies`,
+      );
+      assert(
+        art.quote.includes(art.applies),
+        `${id}: article ${art.number} applies must be a substring of quote.\napplies: "${art.applies}"\nquote: "${art.quote.slice(0, 120)}..."`,
+      );
+    }
+  }
+});
+
+// ---------------------------------------------------------------------------
+// 11. R02 Art. 54 ref includes paragraph and point; applies is a verbatim
+//     substring of the quote
+// ---------------------------------------------------------------------------
+Deno.test("R02: Art. 54 ref names a paragraph and point (Art. 54(1)(b))", () => {
+  const req = REQUESTS["R02"];
+  const dr = decide(req);
+  const exp = explain(req, dr);
+  const art54 = exp.articles.find((a) => a.number === "54");
+  assert(art54 !== undefined, "R02: must include Art. 54");
+  // Should include "(1)" (paragraph) and "(b)" (point for insurance premiums)
+  assert(
+    art54.ref.includes("(1)"),
+    `R02: Art. 54 ref must include "(1)" paragraph, got: "${art54.ref}"`,
+  );
+  assert(
+    art54.ref.includes("(b)"),
+    `R02: Art. 54 ref must include the specific point "(b)", got: "${art54.ref}"`,
+  );
+  assert(
+    art54.point === "(b)",
+    `R02: Art. 54 point must be "(b)", got: "${art54.point}"`,
+  );
+  assert(
+    art54.applies.length > 0,
+    "R02: Art. 54 applies must be non-empty",
+  );
+  assert(
+    art54.quote.includes(art54.applies),
+    `R02: Art. 54 applies must be substring of quote.\napplies: "${art54.applies}"`,
+  );
+});
+
+// ---------------------------------------------------------------------------
+// 12. R05 Art. 53 maps to point (e)(ii) — algorithm training sub-point
+// ---------------------------------------------------------------------------
+Deno.test("R05: Art. 53 maps to point (e)(ii) for model training", () => {
+  const req = REQUESTS["R05"];
+  const dr = decide(req);
+  const exp = explain(req, dr, PLAN_EXAMPLES["R05"] as QueryPlan);
+  const art53 = exp.articles.find((a) => a.number === "53");
+  assert(art53 !== undefined, "R05: must include Art. 53");
+  assert(
+    art53.point === "(e)(ii)",
+    `R05: Art. 53 point must be "(e)(ii)" for model training, got: "${art53.point}"`,
+  );
+  assert(
+    art53.ref.includes("(e)(ii)"),
+    `R05: Art. 53 ref must include "(e)(ii)", got: "${art53.ref}"`,
+  );
+  assert(
+    art53.applies.length > 0,
+    "R05: Art. 53 applies must be non-empty",
+  );
+  assert(
+    art53.quote.includes(art53.applies),
+    `R05: Art. 53 applies must be substring of quote.\napplies: "${art53.applies}"`,
+  );
+});
+
+// ---------------------------------------------------------------------------
+// 13. R08 plan_summary uses readable names, not raw codes
+// ---------------------------------------------------------------------------
+Deno.test("R08: plan_summary uses readable names not raw codes", () => {
+  const req = REQUESTS["R08"];
+  const dr = decide(req);
+  const exp = explain(req, dr, PLAN_EXAMPLES["R08"] as QueryPlan);
+  assert(exp.plan_summary !== undefined, "R08: plan_summary must be present");
+  const ps = exp.plan_summary!;
+  // Must NOT contain raw snake_case metric labels or bare LOINC/ICD codes as labels
+  assert(
+    !ps.includes("mean_bmi"),
+    `R08: plan_summary must not contain raw label 'mean_bmi', got: "${ps}"`,
+  );
+  assert(
+    !ps.includes("women_with_bmi"),
+    `R08: plan_summary must not contain raw label 'women_with_bmi', got: "${ps}"`,
+  );
+  // Must contain readable name for BMI
+  assert(
+    ps.toLowerCase().includes("bmi"),
+    `R08: plan_summary must mention BMI, got: "${ps}"`,
+  );
+  // Must contain ICD-10 C50 (breast cancer) — with readable name
+  assert(
+    ps.includes("C50") || ps.toLowerCase().includes("breast cancer"),
+    `R08: plan_summary must mention breast cancer or C50, got: "${ps}"`,
+  );
+  // Must contain LOINC 39156-5 in brackets
+  assert(
+    ps.includes("39156-5"),
+    `R08: plan_summary must still include LOINC code in brackets, got: "${ps}"`,
+  );
+});
+
+// ---------------------------------------------------------------------------
+// 14. verifyQuotes also rejects a tampered applies field
+// ---------------------------------------------------------------------------
+Deno.test("verifyQuotes: rejects an applies field not in the quote", () => {
+  const req = REQUESTS["R01"];
+  const dr = decide(req);
+  const exp = explain(req, dr, PLAN_EXAMPLES["R01"] as QueryPlan);
+  const tampered = {
+    ...exp,
+    articles: exp.articles.map((a, i) =>
+      i === 0 ? { ...a, applies: a.applies + " [TAMPERED]" } : a
+    ),
+  };
+  const ok = verifyQuotes(tampered, req);
+  assert(!ok, "verifyQuotes must return false when applies is not a substring of quote");
+});
+
+// ---------------------------------------------------------------------------
+// 15. Exact ref for each of R01-R10 (point-level precision)
+// ---------------------------------------------------------------------------
+Deno.test("R01–R10: exact Art. 53/54 ref matches expected point", () => {
+  const EXPECTED_REFS: Record<string, string> = {
+    R01: "Art. 53(1)(a)",
+    R02: "Art. 54(1)(b)",
+    R03: "Art. 53(1)(b)",
+    R04: "Art. 54(1)(c)",
+    R05: "Art. 53(1)(e)(ii)",
+    R06: "Art. 54(1)(b)",
+    R07: "Art. 53(1)(c)",
+    R08: "Art. 53(1)(e)",
+    R09: "Art. 53(1)(d)",
+    R10: "Art. 54(1)(d)",
+  };
+  for (const [id, expectedRef] of Object.entries(EXPECTED_REFS)) {
+    const req = REQUESTS[id];
+    const dr = decide(req);
+    const exp = explain(req, dr);
+    const art53 = exp.articles.find((a) => a.number === "53");
+    const art54 = exp.articles.find((a) => a.number === "54");
+    const artRef = art53 ? art53.ref : art54?.ref;
+    assert(
+      artRef === expectedRef,
+      `${id}: expected ref "${expectedRef}", got "${artRef}"`,
+    );
+  }
+});
+
+// ---------------------------------------------------------------------------
+// 16. R01 plan_summary uses readable names, not raw snake_case
+// ---------------------------------------------------------------------------
+Deno.test("R01: plan_summary uses readable names not raw codes", () => {
+  const req = REQUESTS["R01"];
+  const dr = decide(req);
+  const exp = explain(req, dr, PLAN_EXAMPLES["R01"] as QueryPlan);
+  assert(exp.plan_summary !== undefined, "R01: plan_summary must be present");
+  const ps = exp.plan_summary!;
+  // Must NOT contain raw snake_case labels
+  assert(!ps.includes("type2_diabetes"), `R01: must not contain 'type2_diabetes', got: "${ps}"`);
+  assert(!ps.includes("prevalence_pct"), `R01: must not contain 'prevalence_pct', got: "${ps}"`);
+  // Must contain readable form
+  assert(
+    ps.toLowerCase().includes("type 2 diabetes"),
+    `R01: must mention 'type 2 diabetes', got: "${ps}"`,
+  );
+  assert(ps.includes("E11"), `R01: must include ICD-10 code E11, got: "${ps}"`);
+  assert(
+    ps.toLowerCase().includes("prevalence"),
+    `R01: must mention 'prevalence', got: "${ps}"`,
+  );
+});
+
+// ---------------------------------------------------------------------------
+// 17. R03 plan_summary uses readable names, not raw snake_case
+// ---------------------------------------------------------------------------
+Deno.test("R03: plan_summary uses readable names not raw codes", () => {
+  const req = REQUESTS["R03"];
+  const dr = decide(req);
+  const exp = explain(req, dr, PLAN_EXAMPLES["R03"] as QueryPlan);
+  assert(exp.plan_summary !== undefined, "R03: plan_summary must be present");
+  const ps = exp.plan_summary!;
+  // Must NOT contain raw snake_case labels
+  assert(!ps.includes("af_patients"), `R03: must not contain 'af_patients', got: "${ps}"`);
+  assert(!ps.includes("without_oac"), `R03: must not contain raw 'without_oac', got: "${ps}"`);
+  assert(!ps.includes("share_without_oac_pct"), `R03: must not contain 'share_without_oac_pct', got: "${ps}"`);
+  // Must contain readable forms
+  assert(
+    ps.toLowerCase().includes("atrial fibrillation"),
+    `R03: must mention 'atrial fibrillation', got: "${ps}"`,
+  );
+  assert(
+    ps.toLowerCase().includes("anticoagulant"),
+    `R03: must mention 'anticoagulant', got: "${ps}"`,
+  );
+  assert(
+    ps.toLowerCase().includes("share"),
+    `R03: must mention 'share', got: "${ps}"`,
+  );
+});
